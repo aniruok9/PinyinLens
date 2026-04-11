@@ -9,6 +9,8 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@gutenye/ocr-browser": "^1.4.8",
+    "coi-serviceworker": "^0.1.7",
     "onnxruntime-web": "^1.21.0",
     "pinyin-pro": "^3.26.0"
   },

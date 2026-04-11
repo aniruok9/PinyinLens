@@ -1,4 +1,5 @@
-import { initCamera, stopCamera } from './camera.js';
+import { initCamera } from './camera.js';
+import { initOCR, detectText } from './ocr.js';
 import { renderOverlay } from './overlay.js';
 import { convertPinyin } from './pinyin.js';
 
@@ -9,9 +10,9 @@ const loadingScreen = document.getElementById('loading-screen');
 const progressFill = document.getElementById('progress-fill');
 const loadingStatus = document.getElementById('loading-status');
 
-let ocrWorker = null;
 let latestResults = null;
 let frozen = false;
+let ocrBusy = false;
 
 function updateProgress(pct, status) {
   progressFill.style.width = `${pct}%`;
@@ -19,25 +20,17 @@ function updateProgress(pct, status) {
 }
 
 async function init() {
-  // Register COOP/COEP service worker
-  if ('serviceWorker' in navigator) {
-    await navigator.serviceWorker.register('/sw.js');
+  if (!crossOriginIsolated) {
+    updateProgress(0, 'Waiting for cross-origin isolation...');
+    return;
   }
 
   updateProgress(10, 'Starting camera...');
   await initCamera(video);
 
   updateProgress(30, 'Loading OCR models...');
-  ocrWorker = new Worker(new URL('./ocr-worker.js', import.meta.url), { type: 'module' });
-
-  await new Promise((resolve) => {
-    ocrWorker.onmessage = (e) => {
-      if (e.data.type === 'ready') {
-        resolve();
-      } else if (e.data.type === 'result') {
-        onOCRResult(e.data.regions);
-      }
-    };
+  await initOCR((pct, status) => {
+    updateProgress(30 + pct * 0.6, status);
   });
 
   updateProgress(100, 'Ready');
@@ -49,25 +42,15 @@ async function init() {
   startRenderLoop();
   startOCRLoop();
 
-  // Tap-to-freeze
   canvas.addEventListener('click', () => {
     frozen = !frozen;
   });
 
-  // Visibility change: restart camera if needed
   document.addEventListener('visibilitychange', async () => {
     if (document.visibilityState === 'visible' && !video.srcObject) {
       await initCamera(video);
     }
   });
-}
-
-function onOCRResult(regions) {
-  // regions: [{ text, box: { x, y, width, height } }]
-  latestResults = regions.map((r) => ({
-    ...r,
-    pinyin: convertPinyin(r.text),
-  }));
 }
 
 function startRenderLoop() {
@@ -83,19 +66,24 @@ function startRenderLoop() {
   requestAnimationFrame(frame);
 }
 
-let ocrFrameCount = 0;
 function startOCRLoop() {
-  function tick() {
-    ocrFrameCount++;
-    if (!frozen && ocrFrameCount % 4 === 0 && ocrWorker) {
-      const bitmap = createImageBitmap(video);
-      bitmap.then((bmp) => {
-        ocrWorker.postMessage({ type: 'detect', bitmap: bmp }, [bmp]);
-      });
+  async function tick() {
+    if (!frozen && !ocrBusy) {
+      ocrBusy = true;
+      try {
+        const regions = await detectText(video);
+        latestResults = regions.map((r) => ({
+          ...r,
+          pinyin: convertPinyin(r.text),
+        }));
+      } catch (err) {
+        console.error('OCR error:', err);
+      }
+      ocrBusy = false;
     }
-    requestAnimationFrame(tick);
+    setTimeout(tick, 200);
   }
-  requestAnimationFrame(tick);
+  tick();
 }
 
 init().catch((err) => {

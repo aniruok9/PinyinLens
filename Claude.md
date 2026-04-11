@@ -31,7 +31,7 @@ Single-codebase PWA. No OS-specific branches — use runtime feature detection t
 - ONNX Runtime WASM: ~8MB
 - pinyin-pro + modern dictionary: ~1.5MB
 
-Source for pre-converted ONNX models: `monkt/paddleocr-onnx` on HuggingFace. Wrapper libraries to evaluate: `@gutenye/ocr-browser` (clean API, returns `{ text, score, frame: { top, left, width, height } }`) or `client-side-ocr` (has OpenCV.js preprocessing and Web Worker support built in).
+Source for pre-converted ONNX models: `monkt/paddleocr-onnx` on HuggingFace. Use `@gutenye/ocr-browser` as the wrapper library — clean API returning `{ text, score, frame: { top, left, width, height } }`, handles the full PaddleOCR pre/post-processing pipeline (DB post-processing, CTC decoding, dictionary lookup). Avoids ~300–500 lines of custom pipeline code. If it fails in a Web Worker context, fall back to raw `onnxruntime-web` using its source as reference. Avoid `client-side-ocr` — OpenCV.js dependency adds ~8MB of unnecessary bloat.
 
 ## Key Technical Decisions
 
@@ -51,6 +51,7 @@ Source for pre-converted ONNX models: `monkt/paddleocr-onnx` on HuggingFace. Wra
 ### OCR Performance Strategy
 
 - Never run OCR at camera FPS. Detection runs every 3rd–5th frame; recognition runs only on detected regions.
+- **Busy flag in worker:** Drop incoming frames while the previous inference is still running. PaddleOCR detection takes 100–300ms and recognition 200–500ms on mobile WASM — sending frames every 4th rAF (~15fps) would queue up faster than they complete.
 - Preprocess frames before OCR: grayscale, contrast boost, adaptive thresholding (~5ms on canvas, major accuracy improvement).
 - Temporal smoothing: if same bounding box persists across 2–3 frames, lock it and skip re-recognition until camera moves significantly. Eliminates flicker.
 - Tap-to-freeze: user taps screen to pause on a still frame, OCR runs at higher resolution for difficult scenes. This is the reliability escape hatch.
@@ -58,19 +59,23 @@ Source for pre-converted ONNX models: `monkt/paddleocr-onnx` on HuggingFace. Wra
 ### Progressive Enhancement (no OS branching)
 
 ```
-if (navigator.gpu)        → ONNX WebGPU backend (10-20x faster, Android Chrome today)
-else if (WASM SIMD)       → ONNX WASM SIMD backend (iOS Safari 16.4+, all modern browsers)
-else                      → ONNX plain WASM backend (fallback)
+if (navigator.gpu && !isSafari)  → ONNX WebGPU backend (10-20x faster, Android Chrome today)
+else if (WASM SIMD)              → ONNX WASM SIMD backend (iOS Safari 16.4+, all modern browsers)
+else                             → ONNX plain WASM backend (fallback)
 ```
 
 One codebase, capability detection only. Future iOS WebGPU support works automatically.
+**Safari/WebKit caveat:** ONNX Runtime Web JSEP/WebGPU on Safari causes CPU spikes to 400%+ and memory growth to 1GB+ (see onnxruntime#26827). Force WASM SIMD backend on Safari until resolved.
 
 ### GitHub Pages Hosting
 
 - 100MB per-file limit, 1GB total site limit, 100GB/month bandwidth (soft). Models fit easily.
 - GitHub Pages CANNOT set COOP/COEP security headers needed for SharedArrayBuffer (multi-threaded WASM).
-- **Workaround:** Service worker intercepts all responses, injects `Cross-Origin-Embedder-Policy: require-corp` and `Cross-Origin-Opener-Policy: same-origin`. ~15 lines of code, deployed once.
+- **Workaround:** Use `coi-serviceworker` (loaded as a separate script before the app) to inject `Cross-Origin-Embedder-Policy: credentialless` and `Cross-Origin-Opener-Policy: same-origin`. It handles the first-load reload automatically (SW isn't active on first visit, so a reload is required for `crossOriginIsolated` to become `true`).
+- Use `credentialless` instead of `require-corp` for COEP — it's more permissive with cross-origin fetches (model files from HuggingFace/CDN won't be blocked).
 - If models exceed limits in future, host on GitHub Releases or jsDelivr (free for GitHub assets).
+- Set `base: '/PinyinLens/'` in Vite config for project-site deployment (not root user site). All paths must be relative or use the base prefix.
+- Add `.nojekyll` file to root — GitHub Pages runs Jekyll by default, which can interfere with files starting with underscores in Vite's build output.
 
 ### Offline & Caching
 
@@ -107,8 +112,7 @@ pinyin('我今天很开心'); // → 'wǒ jīn tiān hěn kāi xīn'
 
 - Single `<canvas>` element sized to match `video.videoWidth × video.videoHeight`
 - Each frame: `ctx.drawImage(video, 0, 0)` then `ctx.fillText()` for each pinyin annotation
-- OCR bounding boxes map 1:1 to canvas coordinates (no transform math needed)
-- CSS handles display scaling to fit screen
+- **Coordinate mapping required:** CSS `object-fit: cover` crops the canvas display, so OCR bounding boxes (in video pixel space) must be transformed to account for the offset/scale between canvas internal resolution and displayed region. Use `contain` instead of `cover` to avoid cropping, or compute the crop offset and apply it to all bounding box coordinates.
 - Pinyin rendered below each detected text bounding box in a semi-transparent background strip for readability
 
 ## Future Extension: Translation
@@ -120,23 +124,62 @@ pinyin-pro returns segmented words. To add English translation below pinyin:
 3. Render: Chinese text (detected) → pinyin below → short English gloss below pinyin
 4. Architecture already supports this — it's one additional lookup step after pinyin conversion
 
+## Service Worker Architecture
+
+Two separate service workers with different concerns:
+
+1. **`coi-serviceworker`** — Loaded as a script tag before the app. Injects COOP/COEP headers and handles the first-load reload. This is a standalone dependency, not custom code.
+2. **Workbox SW (via `vite-plugin-pwa`)** — Handles precaching of app shell and model files. Uses `generateSW` strategy since all caching logic is declarative. Does NOT inject COOP/COEP headers (that's coi-serviceworker's job).
+
+These do NOT conflict because `coi-serviceworker` registers at the app's scope and rewrites response headers, while Workbox manages cache storage. However, if they do conflict, switch `vite-plugin-pwa` to `injectManifest` and merge the COOP/COEP logic into one SW.
+
+## Implementation Order
+
+### Phase 1: Infrastructure Foundation
+1. Fix service worker setup (coi-serviceworker + Workbox)
+2. Set Vite `base` path, fix absolute paths, add `.nojekyll`
+3. Deploy minimal build to GitHub Pages — verify `crossOriginIsolated === true`
+
+### Phase 2: OCR Pipeline (hardest part)
+4. Get `@gutenye/ocr-browser` loading in the Web Worker with a test image
+5. Model loading with progress tracking (fetch + ReadableStream) + IndexedDB persistence
+6. Wire up bitmap transfer, implement busy flag to prevent request queuing
+
+### Phase 3: Camera & Rendering
+7. Camera stream lifecycle + iOS visibility change restart
+8. Coordinate mapping between OCR output and canvas display
+9. Temporal smoothing (bounding box persistence, flicker elimination)
+
+### Phase 4: Polish & UX
+10. Tap-to-freeze with high-res OCR pass
+11. Pinch-to-zoom (CSS transform + native zoom constraint)
+12. Photo capture and share
+13. Offline testing and cache verification
+
+### Phase 5: Performance Hardening
+14. Backend selection with Safari JSEP workaround
+15. Low-end device testing (older iPhones, budget Android)
+16. Memory profiling and tuning
+
 ## File Structure
 
 ```
 /
 ├── index.html
 ├── manifest.json
-├── sw.js                    # Service worker (COOP/COEP headers + caching)
+├── .nojekyll                 # Prevents GitHub Pages Jekyll processing
+├── public/
+│   └── coi-serviceworker.min.js  # COOP/COEP header injection + auto-reload
 ├── src/
-│   ├── main.js              # Entry: camera setup, UI, render loop
-│   ├── ocr-worker.js        # Web Worker: ONNX inference pipeline
+│   ├── main.js               # Entry: camera setup, UI, render loop, OCR scheduling
+│   ├── ocr.js                # @gutenye/ocr-browser wrapper, model loading
 │   ├── pinyin.js             # pinyin-pro wrapper
-│   ├── camera.js             # getUserMedia, stream lifecycle, zoom gestures
+│   ├── camera.js             # getUserMedia, stream lifecycle
 │   ├── overlay.js            # Canvas rendering, bounding box → pinyin positioning
 │   └── capture.js            # Photo save / share functionality
-├── models/                   # PaddleOCR ONNX models (gitignored, fetched at runtime or bundled)
-│   ├── det.onnx
-│   └── rec.onnx
+├── models/                   # (gitignored, models fetched at runtime from HuggingFace)
 ├── vite.config.js
 └── package.json
 ```
+
+**Note:** OCR runs on the main thread using `@gutenye/ocr-browser` (not in a Web Worker) because the library depends on DOM APIs (`document.createElement('canvas')`, `new Image()`). ONNX Runtime's WASM inference still runs in background threads via SharedArrayBuffer. If main-thread jank is observed, migrate to raw `onnxruntime-web` in a Web Worker.

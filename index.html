@@ -5,9 +5,10 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
   <meta name="theme-color" content="#000000">
   <title>Pinyin Lens</title>
-  <link rel="manifest" href="/manifest.json">
-  <link rel="icon" href="/icons/icon-192.png" type="image/png">
-  <link rel="apple-touch-icon" href="/icons/icon-192.png">
+  <link rel="manifest" href="manifest.json">
+  <link rel="icon" href="icons/icon-192.png" type="image/png">
+  <link rel="apple-touch-icon" href="icons/icon-192.png">
+  <script src="coi-serviceworker.min.js"></script>
   <style>
     *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
     html, body { width: 100%; height: 100%; overflow: hidden; background: #000; }
@@ -26,7 +27,7 @@
     }
     #loading-screen .status { margin-top: 0.75rem; font-size: 0.85rem; color: #aaa; }
     #camera-canvas {
-      display: block; width: 100%; height: 100%; object-fit: cover;
+      display: block; width: 100%; height: 100%; object-fit: contain;
       touch-action: none;
     }
     .hidden { display: none !important; }
@@ -43,6 +44,6 @@
 
   <video id="camera-video" playsinline autoplay muted style="display:none;"></video>
 
-  <script type="module" src="/src/main.js"></script>
+  <script type="module" src="./src/main.js"></script>
 </body>
 </html>
