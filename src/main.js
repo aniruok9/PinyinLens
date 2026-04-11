@@ -1,11 +1,12 @@
 import { initCamera } from './camera.js';
 import { initOCR, detectText } from './ocr.js';
 import { renderOverlay } from './overlay.js';
-import { convertPinyin } from './pinyin.js';
+import { convertPinyin, containsChinese } from './pinyin.js';
 
 const video = document.getElementById('camera-video');
 const canvas = document.getElementById('camera-canvas');
 const ctx = canvas.getContext('2d');
+const container = document.getElementById('camera-container');
 const loadingScreen = document.getElementById('loading-screen');
 const progressFill = document.getElementById('progress-fill');
 const loadingStatus = document.getElementById('loading-status');
@@ -62,14 +63,19 @@ async function init() {
   updateProgress(100, 'Ready');
   loadingScreen.classList.add('hidden');
 
-  canvas.width = video.videoWidth;
-  canvas.height = video.videoHeight;
+  resizeCanvas();
+  window.addEventListener('resize', resizeCanvas);
 
   startRenderLoop();
   startOCRLoop();
 
-  canvas.addEventListener('click', () => {
+  container.addEventListener('click', () => {
     frozen = !frozen;
+    if (frozen) {
+      video.pause();
+    } else {
+      video.play();
+    }
   });
 
   document.addEventListener('visibilitychange', async () => {
@@ -79,11 +85,16 @@ async function init() {
   });
 }
 
+// Match canvas internal resolution to the video's actual displayed area
+// so overlay coordinates align with the video beneath it.
+function resizeCanvas() {
+  canvas.width = video.videoWidth || 640;
+  canvas.height = video.videoHeight || 480;
+}
+
 function startRenderLoop() {
   function frame() {
-    if (!frozen) {
-      ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-    }
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
     if (latestResults) {
       renderOverlay(ctx, latestResults);
     }
@@ -98,10 +109,12 @@ function startOCRLoop() {
       ocrBusy = true;
       try {
         const regions = await detectText(video);
-        latestResults = regions.map((r) => ({
-          ...r,
-          pinyin: convertPinyin(r.text),
-        }));
+        latestResults = regions
+          .filter((r) => containsChinese(r.text))
+          .map((r) => ({
+            ...r,
+            pinyin: convertPinyin(r.text),
+          }));
       } catch (err) {
         console.error('OCR error:', err);
       }
