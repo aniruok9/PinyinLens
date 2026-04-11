@@ -38,17 +38,39 @@ export async function initOCR(onProgress) {
   onProgress?.(100, 'OCR ready');
 }
 
+// Reuse a single offscreen canvas for frame capture to avoid GC churn
+let captureCanvas = null;
+let captureCtx = null;
+
+// Target width for OCR input — downsampling from 1920→640 gives ~9x fewer pixels,
+// dramatically faster inference with minimal accuracy loss for text detection.
+const OCR_TARGET_WIDTH = 640;
+
 export async function detectText(videoElement) {
   if (!ocr) return [];
 
-  const canvas = document.createElement('canvas');
-  canvas.width = videoElement.videoWidth;
-  canvas.height = videoElement.videoHeight;
-  const ctx = canvas.getContext('2d');
-  ctx.drawImage(videoElement, 0, 0);
+  const srcW = videoElement.videoWidth;
+  const srcH = videoElement.videoHeight;
+  if (!srcW || !srcH) return [];
 
-  const blob = await new Promise((resolve) => canvas.toBlob(resolve, 'image/jpeg', 0.85));
+  // Downsample to OCR_TARGET_WIDTH, preserving aspect ratio
+  const scale = Math.min(1, OCR_TARGET_WIDTH / srcW);
+  const dstW = Math.round(srcW * scale);
+  const dstH = Math.round(srcH * scale);
+
+  if (!captureCanvas) {
+    captureCanvas = document.createElement('canvas');
+    captureCtx = captureCanvas.getContext('2d');
+  }
+  captureCanvas.width = dstW;
+  captureCanvas.height = dstH;
+  captureCtx.drawImage(videoElement, 0, 0, dstW, dstH);
+
+  const blob = await new Promise((resolve) => captureCanvas.toBlob(resolve, 'image/jpeg', 0.6));
   const url = URL.createObjectURL(blob);
+
+  // Inverse scale to map OCR coordinates back to full video resolution
+  const invScale = 1 / scale;
 
   try {
     const results = await ocr.detect(url);
@@ -59,10 +81,10 @@ export async function detectText(videoElement) {
 
       const xs = box.map((p) => p[0]);
       const ys = box.map((p) => p[1]);
-      const minX = Math.min(...xs);
-      const minY = Math.min(...ys);
-      const maxX = Math.max(...xs);
-      const maxY = Math.max(...ys);
+      const minX = Math.min(...xs) * invScale;
+      const minY = Math.min(...ys) * invScale;
+      const maxX = Math.max(...xs) * invScale;
+      const maxY = Math.max(...ys) * invScale;
 
       return {
         text: line.text,

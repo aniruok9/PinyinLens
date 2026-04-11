@@ -12,8 +12,14 @@ const progressFill = document.getElementById('progress-fill');
 const loadingStatus = document.getElementById('loading-status');
 
 let latestResults = null;
+let resultsTimestamp = 0;
 let frozen = false;
 let ocrBusy = false;
+
+// How long (ms) before OCR results start fading, and when they disappear entirely.
+// This prevents stale pinyin from lingering over moved camera content.
+const RESULTS_FADE_START = 800;
+const RESULTS_FADE_END = 1500;
 
 function updateProgress(pct, status) {
   progressFill.style.width = `${pct}%`;
@@ -95,8 +101,17 @@ function resizeCanvas() {
 function startRenderLoop() {
   function frame() {
     ctx.clearRect(0, 0, canvas.width, canvas.height);
-    if (latestResults) {
-      renderOverlay(ctx, latestResults);
+    if (latestResults && latestResults.length > 0) {
+      const age = performance.now() - resultsTimestamp;
+      if (age < RESULTS_FADE_END) {
+        // Compute opacity: full until FADE_START, then linear fade to 0
+        const opacity = age < RESULTS_FADE_START
+          ? 1
+          : 1 - (age - RESULTS_FADE_START) / (RESULTS_FADE_END - RESULTS_FADE_START);
+        ctx.globalAlpha = opacity;
+        renderOverlay(ctx, latestResults);
+        ctx.globalAlpha = 1;
+      }
     }
     requestAnimationFrame(frame);
   }
@@ -115,12 +130,15 @@ function startOCRLoop() {
             ...r,
             pinyin: convertPinyin(r.text),
           }));
+        resultsTimestamp = performance.now();
       } catch (err) {
         console.error('OCR error:', err);
       }
       ocrBusy = false;
     }
-    setTimeout(tick, 200);
+    // Reduced from 200ms — the busy flag prevents queuing anyway,
+    // so we just need to check often enough to dispatch the next OCR run promptly.
+    setTimeout(tick, 50);
   }
   tick();
 }
