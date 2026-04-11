@@ -1,3 +1,4 @@
+import * as ort from 'onnxruntime-web';
 import Ocr from '@gutenye/ocr-browser';
 
 let ocr = null;
@@ -10,15 +11,27 @@ const MODELS = {
 };
 
 export async function initOCR(onProgress) {
-  onProgress?.(0, 'Loading OCR models...');
-  ocr = await Ocr.create({ models: MODELS });
+  // Point ONNX Runtime to the unhashed WASM files in public/
+  ort.env.wasm.wasmPaths = import.meta.env.BASE_URL;
+
+  // Disable WebGPU — use WASM backend for broadest compatibility
+  // (Safari WebGPU causes memory leaks, Firefox lacks full support)
+  ort.env.wasm.numThreads = crossOriginIsolated ? navigator.hardwareConcurrency || 4 : 1;
+
+  onProgress?.(10, 'Loading detection model...');
+
+  try {
+    ocr = await Ocr.create({ models: MODELS });
+  } catch (err) {
+    throw new Error(`OCR init failed: ${err.message}`);
+  }
+
   onProgress?.(100, 'OCR ready');
 }
 
 export async function detectText(videoElement) {
   if (!ocr) return [];
 
-  // Create a blob URL from the current video frame (faster than dataURL)
   const canvas = document.createElement('canvas');
   canvas.width = videoElement.videoWidth;
   canvas.height = videoElement.videoHeight;
@@ -31,12 +44,10 @@ export async function detectText(videoElement) {
   try {
     const results = await ocr.detect(url);
 
-    // Library returns { text, mean, box: [[x,y]×4] } (4-corner polygon)
     return results.map((line) => {
       const box = line.box;
       if (!box || box.length < 4) return null;
 
-      // Convert 4-point polygon to bounding rect
       const xs = box.map((p) => p[0]);
       const ys = box.map((p) => p[1]);
       const minX = Math.min(...xs);

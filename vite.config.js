@@ -33,6 +33,10 @@ export default defineConfig({
   build: {
     target: 'esnext',
   },
+  assetsInclude: [],
+  optimizeDeps: {
+    exclude: ['onnxruntime-web'],
+  },
   worker: {
     format: 'es',
     plugins: () => [wasm(), topLevelAwait()],

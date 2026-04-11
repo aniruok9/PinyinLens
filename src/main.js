@@ -26,13 +26,23 @@ async function init() {
     console.warn('crossOriginIsolated is false — WASM multi-threading unavailable');
   }
 
-  updateProgress(10, 'Starting camera...');
-  await initCamera(video);
+  try {
+    updateProgress(10, 'Starting camera...');
+    await initCamera(video);
+  } catch (err) {
+    updateProgress(10, `Camera error: ${err.message}`);
+    throw err;
+  }
 
-  updateProgress(30, 'Loading OCR models...');
-  await initOCR((pct, status) => {
-    updateProgress(30 + pct * 0.6, status);
-  });
+  try {
+    updateProgress(30, 'Loading OCR models...');
+    await initOCR((pct, status) => {
+      updateProgress(30 + pct * 0.6, status);
+    });
+  } catch (err) {
+    updateProgress(30, `OCR error: ${err.message}`);
+    throw err;
+  }
 
   updateProgress(100, 'Ready');
   loadingScreen.classList.add('hidden');
