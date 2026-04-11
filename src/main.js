@@ -21,8 +21,9 @@ function updateProgress(pct, status) {
 
 async function init() {
   if (!crossOriginIsolated) {
-    updateProgress(0, 'Waiting for cross-origin isolation...');
-    return;
+    // coi-serviceworker will reload the page to enable cross-origin isolation.
+    // If we're still not isolated after that, continue anyway (single-threaded WASM).
+    console.warn('crossOriginIsolated is false — WASM multi-threading unavailable');
   }
 
   updateProgress(10, 'Starting camera...');
