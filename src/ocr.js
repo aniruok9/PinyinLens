@@ -16,10 +16,16 @@ export async function initOCR(onProgress) {
 
   // Disable WebGPU — use WASM backend for broadest compatibility
   // (Safari WebGPU causes memory leaks, Firefox lacks full support)
-  ort.env.wasm.numThreads = crossOriginIsolated ? navigator.hardwareConcurrency || 4 : 1;
-
-  // Safety net: timeout WASM init so it never hangs silently (default is 0 = no timeout)
-  ort.env.wasm.initTimeout = 30000;
+  //
+  // Firefox: force single-threaded WASM. Multi-threaded WASM requires pthread Workers
+  // (new Worker(url, { type: 'module' })) which are unreliable on Firefox Android —
+  // the pthread init hangs, causing WASM backend initialization to never complete.
+  const isFirefox = /Firefox\//i.test(navigator.userAgent);
+  if (crossOriginIsolated && !isFirefox) {
+    ort.env.wasm.numThreads = navigator.hardwareConcurrency || 4;
+  } else {
+    ort.env.wasm.numThreads = 1;
+  }
 
   onProgress?.(10, 'Loading detection model...');
 
