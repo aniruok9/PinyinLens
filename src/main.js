@@ -21,10 +21,25 @@ function updateProgress(pct, status) {
 
 async function init() {
   if (!crossOriginIsolated) {
-    // coi-serviceworker will reload the page to enable cross-origin isolation.
-    // If we're still not isolated after that, continue anyway (single-threaded WASM).
-    console.warn('crossOriginIsolated is false — WASM multi-threading unavailable');
+    // ONNX Runtime's WASM binary requires SharedArrayBuffer (shared WebAssembly.Memory),
+    // which is only available when crossOriginIsolated is true.
+    // coi-serviceworker injects COOP/COEP headers via a service worker and reloads the page,
+    // but there's a race condition: on slower devices the reload can happen before the SW
+    // has fully activated and claimed the page, leaving crossOriginIsolated false.
+    // We must not proceed — ONNX init will hang or throw without shared memory.
+    const reloadCount = parseInt(sessionStorage.getItem('coi-reload-count') || '0', 10);
+    if (reloadCount < 3) {
+      updateProgress(0, 'Setting up secure context...');
+      sessionStorage.setItem('coi-reload-count', String(reloadCount + 1));
+      const delays = [500, 1000, 2000];
+      setTimeout(() => window.location.reload(), delays[reloadCount]);
+      return;
+    }
+    updateProgress(0, 'Error: Could not enable cross-origin isolation. Try closing and reopening the tab, or clearing site data in browser settings.');
+    console.error('crossOriginIsolated is false after multiple reloads — ONNX Runtime requires SharedArrayBuffer');
+    return;
   }
+  sessionStorage.removeItem('coi-reload-count');
 
   try {
     updateProgress(10, 'Starting camera...');

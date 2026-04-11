@@ -18,6 +18,9 @@ export async function initOCR(onProgress) {
   // (Safari WebGPU causes memory leaks, Firefox lacks full support)
   ort.env.wasm.numThreads = crossOriginIsolated ? navigator.hardwareConcurrency || 4 : 1;
 
+  // Safety net: timeout WASM init so it never hangs silently (default is 0 = no timeout)
+  ort.env.wasm.initTimeout = 30000;
+
   onProgress?.(10, 'Loading detection model...');
 
   try {
