@@ -121,6 +121,7 @@ async function init() {
 
   document.addEventListener('visibilitychange', async () => {
     if (document.visibilityState === 'visible' && !video.srcObject) {
+      if (frozen) unfreeze();
       await initCamera(video);
     }
   });

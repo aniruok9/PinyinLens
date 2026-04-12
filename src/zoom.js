@@ -43,7 +43,7 @@ export function initZoom(container) {
       e.preventDefault();
       const dist = fingerDist(e.touches[0], e.touches[1]);
       const newScale = startScale * (dist / startDist);
-      scale = Math.max(zoomFloor, newScale);
+      scale = Math.max(zoomFloor, Math.min(10, newScale));
       applyTransform();
     } else if (e.touches.length === 1 && panEnabled) {
       e.preventDefault();
