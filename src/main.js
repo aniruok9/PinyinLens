@@ -2,6 +2,7 @@ import { initCamera } from './camera.js';
 import { initOCR, detectText } from './ocr.js';
 import { renderOverlay } from './overlay.js';
 import { convertPinyin, containsChinese } from './pinyin.js';
+import { initZoom } from './zoom.js';
 
 const video = document.getElementById('camera-video');
 const canvas = document.getElementById('camera-canvas');
@@ -13,8 +14,10 @@ const shutterBtn = document.getElementById('shutter-btn');
 const iconPause = document.getElementById('shutter-icon-pause');
 const iconPlay = document.getElementById('shutter-icon-play');
 const spinner = document.getElementById('shutter-spinner');
+const container = document.getElementById('camera-container');
 
 let frozen = false;
+let zoom = null;
 
 function updateProgress(pct, status) {
   progressFill.style.width = `${pct}%`;
@@ -33,6 +36,7 @@ async function freeze() {
   if (frozen) return;
   frozen = true;
   video.pause();
+  zoom.lockFloor();
   setButtonState('loading');
 
   try {
@@ -50,6 +54,7 @@ async function freeze() {
   } catch (err) {
     console.error('OCR error:', err);
     frozen = false;
+    zoom.reset();
     video.play().catch(() => {});
     setButtonState('live');
   }
@@ -59,6 +64,7 @@ function unfreeze() {
   if (!frozen) return;
   frozen = false;
   ctx.clearRect(0, 0, canvas.width, canvas.height);
+  zoom.reset();
   video.play().catch(() => {});
   setButtonState('live');
 }
@@ -102,6 +108,8 @@ async function init() {
 
   resizeCanvas();
   window.addEventListener('resize', resizeCanvas);
+
+  zoom = initZoom(container);
 
   shutterBtn.addEventListener('click', () => {
     if (frozen) {
