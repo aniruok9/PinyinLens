@@ -9,6 +9,10 @@ const ctx = canvas.getContext('2d');
 const loadingScreen = document.getElementById('loading-screen');
 const progressFill = document.getElementById('progress-fill');
 const loadingStatus = document.getElementById('loading-status');
+const shutterBtn = document.getElementById('shutter-btn');
+const iconPause = document.getElementById('shutter-icon-pause');
+const iconPlay = document.getElementById('shutter-icon-play');
+const spinner = document.getElementById('shutter-spinner');
 
 let frozen = false;
 
@@ -17,21 +21,38 @@ function updateProgress(pct, status) {
   loadingStatus.textContent = status;
 }
 
+function setButtonState(state) {
+  iconPause.classList.toggle('hidden', state !== 'live');
+  iconPlay.classList.toggle('hidden', state !== 'frozen');
+  spinner.classList.toggle('hidden', state !== 'loading');
+  shutterBtn.disabled = state === 'loading';
+  shutterBtn.ariaLabel = state === 'live' ? 'Pause camera' : 'Resume camera';
+}
+
 async function freeze() {
   if (frozen) return;
   frozen = true;
   video.pause();
+  setButtonState('loading');
 
-  const regions = await detectText(video);
-  const results = regions
-    .filter((r) => containsChinese(r.text))
-    .map((r) => ({
-      ...r,
-      pinyin: convertPinyin(r.text),
-    }));
+  try {
+    const regions = await detectText(video);
+    const results = regions
+      .filter((r) => containsChinese(r.text))
+      .map((r) => ({
+        ...r,
+        pinyin: convertPinyin(r.text),
+      }));
 
-  ctx.clearRect(0, 0, canvas.width, canvas.height);
-  renderOverlay(ctx, results);
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    renderOverlay(ctx, results);
+    setButtonState('frozen');
+  } catch (err) {
+    console.error('OCR error:', err);
+    frozen = false;
+    video.play();
+    setButtonState('live');
+  }
 }
 
 function unfreeze() {
@@ -39,6 +60,7 @@ function unfreeze() {
   frozen = false;
   ctx.clearRect(0, 0, canvas.width, canvas.height);
   video.play();
+  setButtonState('live');
 }
 
 async function init() {
@@ -81,6 +103,14 @@ async function init() {
   resizeCanvas();
   window.addEventListener('resize', resizeCanvas);
 
+  shutterBtn.addEventListener('click', () => {
+    if (frozen) {
+      unfreeze();
+    } else {
+      freeze();
+    }
+  });
+
   document.addEventListener('visibilitychange', async () => {
     if (document.visibilityState === 'visible' && !video.srcObject) {
       await initCamera(video);
@@ -97,5 +127,3 @@ init().catch((err) => {
   console.error('Init failed:', err);
   updateProgress(0, `Error: ${err.message}`);
 });
-
-export { freeze, unfreeze, frozen };
