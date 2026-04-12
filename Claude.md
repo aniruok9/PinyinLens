@@ -2,7 +2,7 @@
 
 ## Project Overview
 
-A Progressive Web App that uses the phone's rear camera to detect Chinese text in real-time and overlay hanyu pinyin (with tone mark diacritics like nǐ hǎo) below each detected text region. Hosted on GitHub Pages. Zero cloud dependencies, zero ongoing costs, fully offline after first load.
+A Progressive Web App that uses the phone's rear camera to detect Chinese text and overlay hanyu pinyin (with tone mark diacritics like nǐ hǎo) below each detected text region. The user views a live camera feed, then presses a button to freeze the frame — OCR runs on the frozen frame and pinyin appears as a static overlay. Pressing the button again returns to the live feed. Hosted on GitHub Pages. Zero cloud dependencies, zero ongoing costs, fully offline after first load.
 
 ## Architecture
 
@@ -17,12 +17,12 @@ Single-codebase PWA. No OS-specific branches — use runtime feature detection t
 ## Data Flow
 
 1. `getUserMedia({ video: { facingMode: 'environment' } })` → rear camera at native FPS
-2. `requestVideoFrameCallback` captures every 3rd–5th frame
-3. `createImageBitmap` → transfer to Web Worker (zero-copy)
-4. Worker downsamples to 640×480 → PP-OCRv3 detection (2.3MB model) → bounding boxes
-5. Crop detected regions → PP-OCRv4 recognition (10MB model) → Chinese text strings
-6. Post results to main thread → `pinyin-pro` conversion → canvas overlay render
-7. Live video stays at full FPS; pinyin annotations update every ~500ms–1.5s
+2. User sees live feed with pinch-to-zoom (digital, CSS transform). No OCR runs during live feed.
+3. User presses pause button → `video.pause()` freezes the frame
+4. Frozen frame is downsampled → PP-OCRv4 detection → bounding boxes → recognition → Chinese text strings
+5. `pinyin-pro` conversion → canvas overlay renders pinyin below each detected region (once, static)
+6. User can pinch-to-zoom and drag-to-pan the frozen frame + overlay (zoom floor = zoom level at freeze time)
+7. User presses play button → clear overlay, reset zoom to 1x, `video.play()` resumes live feed
 
 ## Models & Assets (~20MB total first load)
 
@@ -43,18 +43,20 @@ Source for pre-converted ONNX models: `monkt/paddleocr-onnx` on HuggingFace. Use
 - Listen for `visibilitychange` to restart stream after background/foreground transitions (iOS kills streams in background)
 - ImageCapture API is NOT supported on Safari. Use `ctx.drawImage(videoElement, 0, 0)` for frame capture.
 
-### Zoom & Focus
+### Zoom & Pan
 
-- Pinch-to-zoom: CSS `transform: scale()` with touch event handlers tracking pinch distance. Additionally check `MediaTrackCapabilities.zoom` — if available (Android), use native constraint for smoother zoom.
-- Focus: No code needed. Both platforms handle continuous autofocus on rear cameras automatically.
+- Pinch-to-zoom via CSS `transform: scale()` on `#camera-container` with touch event handlers tracking two-finger distance.
+- **Live state:** pinch-to-zoom enabled, no panning, zoom origin is screen center.
+- **Frozen state:** pinch-to-zoom + drag-to-pan enabled (photo viewer behavior). Zoom floor = zoom level at moment of freeze — user cannot zoom out beyond the level they froze at.
+- **Unfreeze:** reset to `scale(1) translate(0,0)`.
+- Focus: No tap-to-focus. Both platforms handle continuous autofocus on rear cameras automatically.
 
-### OCR Performance Strategy
+### OCR Strategy
 
-- Never run OCR at camera FPS. Detection runs every 3rd–5th frame; recognition runs only on detected regions.
-- **Busy flag in worker:** Drop incoming frames while the previous inference is still running. PaddleOCR detection takes 100–300ms and recognition 200–500ms on mobile WASM — sending frames every 4th rAF (~15fps) would queue up faster than they complete.
+- **No continuous OCR.** OCR runs exactly once per freeze, on the paused video frame. No polling loop, no busy flag, no temporal smoothing needed.
+- On freeze: single `detectText(video)` call → filter for Chinese text → `pinyin-pro` conversion → render overlay once.
+- Show a loading indicator on the play/pause button while OCR is processing.
 - Preprocess frames before OCR: grayscale, contrast boost, adaptive thresholding (~5ms on canvas, major accuracy improvement).
-- Temporal smoothing: if same bounding box persists across 2–3 frames, lock it and skip re-recognition until camera moves significantly. Eliminates flicker.
-- Tap-to-freeze: user taps screen to pause on a still frame, OCR runs at higher resolution for difficult scenes. This is the reliability escape hatch.
 
 ### Progressive Enhancement (no OS branching)
 
@@ -102,18 +104,18 @@ pinyin('我今天很开心'); // → 'wǒ jīn tiān hěn kāi xīn'
 - 99.846% accuracy, 6ms for 5,000 characters
 - ~929KB base + ~600KB modern dictionary
 
-## Photo Capture with Overlay
+## UI
 
-- Composite current video frame + pinyin overlay onto offscreen canvas
-- `canvas.toBlob('image/png')` → trigger download OR use `navigator.share({ files: [...] })` for native share sheet (Messages, WhatsApp, etc.)
-- Share API works on both iOS Safari and Android Chrome
+- **Play/pause button:** Single toggle button, fixed at bottom-center (camera shutter position). Not affected by zoom/pan transforms. Shows pause icon in live state, play icon in frozen state. Shows loading indicator (spinner/pulse) while OCR processes.
+- **No photo capture.** Frozen frame is ephemeral — gone when user presses play. No save to gallery.
 
 ## Rendering Approach
 
-- Single `<canvas>` element sized to match `video.videoWidth × video.videoHeight`
-- Each frame: `ctx.drawImage(video, 0, 0)` then `ctx.fillText()` for each pinyin annotation
-- **Coordinate mapping required:** CSS `object-fit: cover` crops the canvas display, so OCR bounding boxes (in video pixel space) must be transformed to account for the offset/scale between canvas internal resolution and displayed region. Use `contain` instead of `cover` to avoid cropping, or compute the crop offset and apply it to all bounding box coordinates.
-- Pinyin rendered below each detected text bounding box in a semi-transparent background strip for readability
+- Single `<canvas>` element overlaying the `<video>`, both using `object-fit: contain` and matching dimensions.
+- **No render loop.** Overlay is drawn once after OCR completes on a frozen frame. No `requestAnimationFrame` loop needed.
+- Pinyin font size scales proportionally to the detected text's bounding box height — no arbitrary min/max caps. Small Chinese text gets small pinyin, large text gets large pinyin.
+- Pinyin rendered below each detected text bounding box in a semi-transparent background strip for readability.
+- Overlay cleared on unfreeze.
 
 ## Future Extension: Translation
 
@@ -135,31 +137,30 @@ These do NOT conflict because `coi-serviceworker` registers at the app's scope a
 
 ## Implementation Order
 
-### Phase 1: Infrastructure Foundation
-1. Fix service worker setup (coi-serviceworker + Workbox)
-2. Set Vite `base` path, fix absolute paths, add `.nojekyll`
-3. Deploy minimal build to GitHub Pages — verify `crossOriginIsolated === true`
+### Phase 1: Core Pivot
+1. Rip out continuous OCR loop, render loop, fade/opacity system
+2. Add play/pause button UI with toggle state and loading indicator
+3. Wire freeze flow: pause video → run OCR once → render overlay
+4. Wire unfreeze flow: clear overlay → reset zoom → resume video
 
-### Phase 2: OCR Pipeline (hardest part)
-4. Get `@gutenye/ocr-browser` loading in the Web Worker with a test image
-5. Model loading with progress tracking (fetch + ReadableStream) + IndexedDB persistence
-6. Wire up bitmap transfer, implement busy flag to prevent request queuing
+### Phase 2: Zoom & Pan
+5. Pinch-to-zoom on live feed (CSS transform, center origin)
+6. Carry zoom level into frozen state as zoom floor
+7. Add drag-to-pan in frozen state
+8. Reset to 1x on unfreeze
 
-### Phase 3: Camera & Rendering
-7. Camera stream lifecycle + iOS visibility change restart
-8. Coordinate mapping between OCR output and canvas display
-9. Temporal smoothing (bounding box persistence, flicker elimination)
+### Phase 3: Overlay Polish
+9. Scale pinyin font size proportionally to bounding box height (remove caps)
+10. Coordinate mapping between OCR output and canvas display
 
-### Phase 4: Polish & UX
-10. Tap-to-freeze with high-res OCR pass
-11. Pinch-to-zoom (CSS transform + native zoom constraint)
-12. Photo capture and share
-13. Offline testing and cache verification
+### Phase 4: Offline & Caching
+11. Offline testing and cache verification
+12. Model persistence in IndexedDB
 
 ### Phase 5: Performance Hardening
-14. Backend selection with Safari JSEP workaround
-15. Low-end device testing (older iPhones, budget Android)
-16. Memory profiling and tuning
+13. Backend selection with Safari JSEP workaround
+14. Low-end device testing (older iPhones, budget Android)
+15. Memory profiling and tuning
 
 ## File Structure
 
@@ -171,12 +172,12 @@ These do NOT conflict because `coi-serviceworker` registers at the app's scope a
 ├── public/
 │   └── coi-serviceworker.min.js  # COOP/COEP header injection + auto-reload
 ├── src/
-│   ├── main.js               # Entry: camera setup, UI, render loop, OCR scheduling
+│   ├── main.js               # Entry: camera setup, UI, freeze/unfreeze flow
 │   ├── ocr.js                # @gutenye/ocr-browser wrapper, model loading
 │   ├── pinyin.js             # pinyin-pro wrapper
 │   ├── camera.js             # getUserMedia, stream lifecycle
 │   ├── overlay.js            # Canvas rendering, bounding box → pinyin positioning
-│   └── capture.js            # Photo save / share functionality
+│   └── zoom.js               # Pinch-to-zoom and drag-to-pan gesture handling
 ├── models/                   # (gitignored, models fetched at runtime from HuggingFace)
 ├── vite.config.js
 └── package.json
