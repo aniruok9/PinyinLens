@@ -6,34 +6,43 @@ import { convertPinyin, containsChinese } from './pinyin.js';
 const video = document.getElementById('camera-video');
 const canvas = document.getElementById('camera-canvas');
 const ctx = canvas.getContext('2d');
-const container = document.getElementById('camera-container');
 const loadingScreen = document.getElementById('loading-screen');
 const progressFill = document.getElementById('progress-fill');
 const loadingStatus = document.getElementById('loading-status');
 
-let latestResults = null;
-let resultsTimestamp = 0;
 let frozen = false;
-let ocrBusy = false;
-
-// How long (ms) before OCR results start fading, and when they disappear entirely.
-// This prevents stale pinyin from lingering over moved camera content.
-const RESULTS_FADE_START = 800;
-const RESULTS_FADE_END = 1500;
 
 function updateProgress(pct, status) {
   progressFill.style.width = `${pct}%`;
   loadingStatus.textContent = status;
 }
 
+async function freeze() {
+  if (frozen) return;
+  frozen = true;
+  video.pause();
+
+  const regions = await detectText(video);
+  const results = regions
+    .filter((r) => containsChinese(r.text))
+    .map((r) => ({
+      ...r,
+      pinyin: convertPinyin(r.text),
+    }));
+
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  renderOverlay(ctx, results);
+}
+
+function unfreeze() {
+  if (!frozen) return;
+  frozen = false;
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  video.play();
+}
+
 async function init() {
   if (!crossOriginIsolated) {
-    // ONNX Runtime's WASM binary requires SharedArrayBuffer (shared WebAssembly.Memory),
-    // which is only available when crossOriginIsolated is true.
-    // coi-serviceworker injects COOP/COEP headers via a service worker and reloads the page,
-    // but there's a race condition: on slower devices the reload can happen before the SW
-    // has fully activated and claimed the page, leaving crossOriginIsolated false.
-    // We must not proceed — ONNX init will hang or throw without shared memory.
     const reloadCount = parseInt(sessionStorage.getItem('coi-reload-count') || '0', 10);
     if (reloadCount < 3) {
       updateProgress(0, 'Setting up secure context...');
@@ -72,18 +81,6 @@ async function init() {
   resizeCanvas();
   window.addEventListener('resize', resizeCanvas);
 
-  startRenderLoop();
-  startOCRLoop();
-
-  container.addEventListener('click', () => {
-    frozen = !frozen;
-    if (frozen) {
-      video.pause();
-    } else {
-      video.play();
-    }
-  });
-
   document.addEventListener('visibilitychange', async () => {
     if (document.visibilityState === 'visible' && !video.srcObject) {
       await initCamera(video);
@@ -91,59 +88,14 @@ async function init() {
   });
 }
 
-// Match canvas internal resolution to the video's actual displayed area
-// so overlay coordinates align with the video beneath it.
 function resizeCanvas() {
   canvas.width = video.videoWidth || 640;
   canvas.height = video.videoHeight || 480;
-}
-
-function startRenderLoop() {
-  function frame() {
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-    if (latestResults && latestResults.length > 0) {
-      const age = performance.now() - resultsTimestamp;
-      if (age < RESULTS_FADE_END) {
-        // Compute opacity: full until FADE_START, then linear fade to 0
-        const opacity = age < RESULTS_FADE_START
-          ? 1
-          : 1 - (age - RESULTS_FADE_START) / (RESULTS_FADE_END - RESULTS_FADE_START);
-        ctx.globalAlpha = opacity;
-        renderOverlay(ctx, latestResults);
-        ctx.globalAlpha = 1;
-      }
-    }
-    requestAnimationFrame(frame);
-  }
-  requestAnimationFrame(frame);
-}
-
-function startOCRLoop() {
-  async function tick() {
-    if (!frozen && !ocrBusy) {
-      ocrBusy = true;
-      try {
-        const regions = await detectText(video);
-        latestResults = regions
-          .filter((r) => containsChinese(r.text))
-          .map((r) => ({
-            ...r,
-            pinyin: convertPinyin(r.text),
-          }));
-        resultsTimestamp = performance.now();
-      } catch (err) {
-        console.error('OCR error:', err);
-      }
-      ocrBusy = false;
-    }
-    // Reduced from 200ms — the busy flag prevents queuing anyway,
-    // so we just need to check often enough to dispatch the next OCR run promptly.
-    setTimeout(tick, 50);
-  }
-  tick();
 }
 
 init().catch((err) => {
   console.error('Init failed:', err);
   updateProgress(0, `Error: ${err.message}`);
 });
+
+export { freeze, unfreeze, frozen };
