@@ -20,8 +20,21 @@ export async function initOCR(onProgress) {
   // Firefox: force single-threaded WASM. Multi-threaded WASM requires pthread Workers
   // (new Worker(url, { type: 'module' })) which are unreliable on Firefox Android —
   // the pthread init hangs, causing WASM backend initialization to never complete.
-  const isFirefox = /Firefox\//i.test(navigator.userAgent);
-  if (crossOriginIsolated && !isFirefox) {
+  //
+  // WebKit (macOS Safari, iOS Safari, iOS Chrome/CriOS, iOS Firefox/FxiOS): force
+  // single-threaded WASM. iOS tabs have a ~1–1.5GB memory ceiling enforced by the
+  // WebKit out-of-process tab killer. Multi-threaded WASM allocates a per-thread
+  // heap against a SharedArrayBuffer, which pushes ONNX Runtime over that ceiling
+  // during recognition and gets the tab killed mid-OCR (symptom: page "reloads by
+  // itself" while the shutter spinner is active, and the reloaded tab then hangs
+  // on "Loading detection model..." because the pthread pool init never completes
+  // after an OOM-killed predecessor). See CLAUDE.md "Safari/WebKit caveat".
+  const ua = navigator.userAgent;
+  const isFirefox = /Firefox\//i.test(ua);
+  // AppleWebKit without "Chrome/" catches Safari + all iOS browsers (CriOS/FxiOS
+  // don't carry "Chrome/"), while excluding desktop Chrome and Android Chrome.
+  const isWebKit = /AppleWebKit\//.test(ua) && !/Chrome\//.test(ua);
+  if (crossOriginIsolated && !isFirefox && !isWebKit) {
     ort.env.wasm.numThreads = navigator.hardwareConcurrency || 4;
   } else {
     ort.env.wasm.numThreads = 1;
