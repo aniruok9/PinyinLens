@@ -10,6 +10,7 @@ const ctx = canvas.getContext('2d');
 const loadingScreen = document.getElementById('loading-screen');
 const progressFill = document.getElementById('progress-fill');
 const loadingStatus = document.getElementById('loading-status');
+const startBtn = document.getElementById('start-btn');
 const shutterBtn = document.getElementById('shutter-btn');
 const iconPause = document.getElementById('shutter-icon-pause');
 const iconPlay = document.getElementById('shutter-icon-play');
@@ -103,7 +104,11 @@ async function init() {
     throw err;
   }
 
-  updateProgress(100, 'Ready');
+  updateProgress(100, 'Ready — tap to start');
+  startBtn.disabled = false;
+  await new Promise((resolve) => {
+    startBtn.addEventListener('click', resolve, { once: true });
+  });
   loadingScreen.classList.add('hidden');
 
   resizeCanvas();
