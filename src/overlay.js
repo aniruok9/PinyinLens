@@ -4,7 +4,7 @@ export function renderOverlay(ctx, results) {
     if (!box || !pinyin) continue;
 
     const pinyinY = box.y + box.height + 2;
-    const fontSize = Math.max(12, Math.min(box.height * 0.6, 32));
+    const fontSize = box.height * 0.6;
 
     // Semi-transparent background strip below the detected text
     ctx.fillStyle = 'rgba(0, 0, 0, 0.65)';
