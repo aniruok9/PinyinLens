@@ -53,6 +53,17 @@ export function initZoom(container) {
     }
   }, { passive: false });
 
+  container.addEventListener('touchend', (e) => {
+    // When pinch ends (going from 2 fingers to 1), reset single-finger
+    // tracking so the remaining finger doesn't cause a pan jump.
+    if (e.touches.length === 1 && panEnabled) {
+      startTouchX = e.touches[0].clientX;
+      startTouchY = e.touches[0].clientY;
+      startPanX = panX;
+      startPanY = panY;
+    }
+  });
+
   return {
     lockFloor() {
       zoomFloor = scale;
