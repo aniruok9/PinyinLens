@@ -26,7 +26,7 @@ function setButtonState(state) {
   iconPlay.classList.toggle('hidden', state !== 'frozen');
   spinner.classList.toggle('hidden', state !== 'loading');
   shutterBtn.disabled = state === 'loading';
-  shutterBtn.ariaLabel = state === 'live' ? 'Pause camera' : 'Resume camera';
+  shutterBtn.setAttribute('aria-label', state === 'live' ? 'Pause camera' : 'Resume camera');
 }
 
 async function freeze() {
@@ -50,7 +50,7 @@ async function freeze() {
   } catch (err) {
     console.error('OCR error:', err);
     frozen = false;
-    video.play();
+    video.play().catch(() => {});
     setButtonState('live');
   }
 }
@@ -59,7 +59,7 @@ function unfreeze() {
   if (!frozen) return;
   frozen = false;
   ctx.clearRect(0, 0, canvas.width, canvas.height);
-  video.play();
+  video.play().catch(() => {});
   setButtonState('live');
 }
 
