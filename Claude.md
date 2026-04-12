@@ -97,12 +97,24 @@ One codebase, capability detection only. Future iOS WebGPU support works automat
 import { pinyin } from 'pinyin-pro';
 // Returns tone-marked diacritics by default
 pinyin('我今天很开心'); // → 'wǒ jīn tiān hěn kāi xīn'
+// Per-character array for positioned rendering
+pinyin('宫保鸡丁', { type: 'array' }); // → ['gōng', 'bǎo', 'jī', 'dīng']
 ```
 
 - Built-in word segmentation (MaxProbability algorithm)
 - Handles polyphonic characters (多音字) from word context: 行 → háng or xíng depending on surrounding words
 - 99.846% accuracy, 6ms for 5,000 characters
 - ~929KB base + ~600KB modern dictionary
+
+### Per-Group Splitting for Grid Layouts
+
+PaddleOCR often groups an entire row of text into one detection region (e.g., a restaurant menu row: `"宫保鸡丁 阿公可口面 海鲜可口面"`). Passing this to pinyin-pro as one string would produce one long pinyin overlay and could cause incorrect polyphonic readings due to false cross-word context.
+
+**Solution:** `splitAndConvert()` in `pinyin.js`:
+1. Extract contiguous CJK runs via regex (`[\u4e00-\u9fff]+`)
+2. Convert each CJK group to pinyin independently (correct polyphonic context per dish/phrase)
+3. Compute weighted character positions (CJK=2 units, Latin=1 unit) for accurate overlay placement
+4. Render pinyin per-character, centered under each Chinese character in `overlay.js`
 
 ## UI
 

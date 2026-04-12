@@ -1,7 +1,7 @@
 import { initCamera } from './camera.js';
 import { initOCR, detectText } from './ocr.js';
 import { renderOverlay } from './overlay.js';
-import { convertPinyin, containsChinese } from './pinyin.js';
+import { splitAndConvert, containsChinese } from './pinyin.js';
 import { initZoom } from './zoom.js';
 
 const video = document.getElementById('camera-video');
@@ -44,8 +44,8 @@ async function freeze() {
     const results = regions
       .filter((r) => containsChinese(r.text))
       .map((r) => ({
-        ...r,
-        pinyin: convertPinyin(r.text),
+        box: r.box,
+        ...splitAndConvert(r.text),
       }));
 
     ctx.clearRect(0, 0, canvas.width, canvas.height);

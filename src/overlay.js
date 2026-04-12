@@ -1,19 +1,29 @@
 export function renderOverlay(ctx, results) {
   for (const r of results) {
-    const { box, pinyin } = r;
-    if (!box || !pinyin) continue;
+    const { box, groups, totalWeight } = r;
+    if (!box || !groups || groups.length === 0) continue;
 
-    const pinyinY = box.y + box.height + 2;
+    const unitWidth = box.width / totalWeight;
+    const cjkCharWidth = unitWidth * 2; // CJK chars are weighted as 2 units
     const fontSize = box.height * 0.6;
+    const pinyinY = box.y + box.height + 2;
 
-    // Semi-transparent background strip below the detected text
-    ctx.fillStyle = 'rgba(0, 0, 0, 0.65)';
-    ctx.fillRect(box.x, pinyinY, box.width, fontSize + 6);
-
-    // Pinyin text
     ctx.font = `bold ${fontSize}px system-ui, sans-serif`;
-    ctx.fillStyle = '#ffffff';
     ctx.textBaseline = 'top';
-    ctx.fillText(pinyin, box.x + 3, pinyinY + 3, box.width - 6);
+
+    for (const group of groups) {
+      for (let i = 0; i < group.chars.length; i++) {
+        const x = box.x + (group.weightOffset + i * 2) * unitWidth;
+
+        // Semi-transparent background strip for this character's pinyin
+        ctx.fillStyle = 'rgba(0, 0, 0, 0.65)';
+        ctx.fillRect(x, pinyinY, cjkCharWidth, fontSize + 6);
+
+        // Pinyin syllable centered under the character
+        ctx.fillStyle = '#ffffff';
+        ctx.textAlign = 'center';
+        ctx.fillText(group.pinyin[i], x + cjkCharWidth / 2, pinyinY + 3);
+      }
+    }
   }
 }
