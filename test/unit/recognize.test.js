@@ -115,6 +115,6 @@ describe('charSpans', () => {
   });
 
   it('gives a lone character the whole crop', () => {
-    expect(charSpans([{ t0: 3, t1: 3 }], 40, 100, 50, 50)).toEqual([[0, 50]]);
+    expect(charSpans([{ t0: 3, t1: 3 }], 40, 320, 100, 50)).toEqual([[0, 50]]);
   });
 });
