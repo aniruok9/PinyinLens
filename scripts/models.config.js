@@ -75,4 +75,4 @@ export const REC_MODELS = {
 };
 
 // The configuration the app ships: picked by scripts/bench.js (docs/benchmarks/2026-10-02-ocr-models.md).
-export const DEFAULT_CONFIG = { det: 'v6-small', rec: 'v4', longSide: 1280 };
+export const DEFAULT_CONFIG = { det: 'v5', rec: 'v5', longSide: 960 };

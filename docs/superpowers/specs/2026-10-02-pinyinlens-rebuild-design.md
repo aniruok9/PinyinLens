@@ -195,7 +195,7 @@ Also compared:
 - Detection long side: 960 vs 1280.
 - (Deferred: int8 quantization. Measure only if the chosen fp32 pair is over ~20MB.)
 
-**Rule:** among configurations that read every required label exactly (success criterion 5), pick the smallest model download, then the fastest. Also verify whether GitHub Pages serves `.wasm` compressed, since that affects the first-visit download estimate.
+**Rule:** among configurations that read every required label exactly (success criterion 5), pick the fastest, then the smallest model download. (Changed during execution: picking the smallest download first chose v6-small + v4 @ 1280, which saved 0.8MB but scanned 29% slower and read all 12 dishes at only one detection size.) Also verify whether GitHub Pages serves `.wasm` compressed, since that affects the first-visit download estimate.
 
 **Planning measurements** (prototype of this pipeline, `image.png`, single-threaded WASM on the dev machine):
 
