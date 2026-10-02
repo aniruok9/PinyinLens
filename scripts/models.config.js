@@ -74,5 +74,5 @@ export const REC_MODELS = {
   },
 };
 
-// The configuration the app ships. Replaced with the benchmark winner in Task 9.
-export const DEFAULT_CONFIG = { det: 'v4', rec: 'v4', longSide: 960 };
+// The configuration the app ships: picked by scripts/bench.js (docs/benchmarks/2026-10-02-ocr-models.md).
+export const DEFAULT_CONFIG = { det: 'v6-small', rec: 'v4', longSide: 1280 };
