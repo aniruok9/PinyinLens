@@ -1,24 +1,22 @@
 {
   "name": "pinyin-lens",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "type": "module",
+  "engines": { "node": ">=22" },
   "scripts": {
-    "postinstall": "node scripts/copy-wasm.js",
-    "dev": "vite",
-    "build": "vite build",
-    "preview": "vite preview"
+    "test": "vitest run",
+    "test:unit": "vitest run test/unit",
+    "fetch-models": "node scripts/fetch-models.js",
+    "bench": "node scripts/bench.js"
   },
   "dependencies": {
-    "@gutenye/ocr-browser": "^1.4.8",
-    "coi-serviceworker": "^0.1.7",
-    "onnxruntime-web": "^1.21.0",
-    "pinyin-pro": "^3.26.0"
+    "onnxruntime-web": "1.24.3",
+    "pinyin-pro": "3.28.1"
   },
   "devDependencies": {
-    "vite": "^6.3.0",
-    "vite-plugin-pwa": "^1.0.0",
-    "vite-plugin-top-level-await": "^1.5.0",
-    "vite-plugin-wasm": "^3.4.1"
+    "pngjs": "7.0.0",
+    "vitest": "5.0.3",
+    "yaml": "2.9.1"
   }
 }

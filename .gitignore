@@ -1,7 +1,9 @@
 node_modules/
 dist/
-models/*.onnx
+models/*
+!models/.gitkeep
 public/*.wasm
 public/*.mjs
+bench-results.json
 .DS_Store
 *.local
