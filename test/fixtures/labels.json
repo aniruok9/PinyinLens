@@ -1,0 +1,33 @@
+{
+  "menu-kkm.png": {
+    "description": "Hawker stall menu board (KKM): printed simplified Chinese dish names over food photos, English under each.",
+    "required": [
+      "鲍贝鱿鱼可口面",
+      "阿公可口面",
+      "海鲜可口面",
+      "鲍鱼美味可口面",
+      "美味可口面",
+      "辣椒可口面",
+      "海鲜伊面",
+      "猪肉米粉",
+      "猪肉面线",
+      "面粉粿",
+      "特制生面",
+      "海鲜生面"
+    ],
+    "pinyin": {
+      "鲍贝鱿鱼可口面": "bào bèi yóu yú kě kǒu miàn",
+      "阿公可口面": "ā gōng kě kǒu miàn",
+      "海鲜可口面": "hǎi xiān kě kǒu miàn",
+      "鲍鱼美味可口面": "bào yú měi wèi kě kǒu miàn",
+      "美味可口面": "měi wèi kě kǒu miàn",
+      "辣椒可口面": "là jiāo kě kǒu miàn",
+      "海鲜伊面": "hǎi xiān yī miàn",
+      "猪肉米粉": "zhū ròu mǐ fěn",
+      "猪肉面线": "zhū ròu miàn xiàn",
+      "面粉粿": "miàn fěn guǒ",
+      "特制生面": "tè zhì shēng miàn",
+      "海鲜生面": "hǎi xiān shēng miàn"
+    }
+  }
+}
