@@ -81,7 +81,7 @@ The worker keeps the last scan's `lines` so that `lookup` can resolve indices. A
 
 ```js
 Line  = { quad: [[x,y]×4], vertical: bool, score: number, tokens: Token[] }
-Token = { text: string, isCJK: bool, chars: Char[] }      // a segmenter word, or a non-CJK run
+Token = { text: string, isCJK: bool, chars: Char[] }      // a contiguous CJK run, or a non-CJK run
 Char  = { ch: string, pinyin: string | null, quad: [[x,y]×4] }
 ```
 
@@ -97,9 +97,9 @@ Char  = { ch: string, pinyin: string | null, quad: [[x,y]×4] }
 | Asset | Approx. size |
 |---|---|
 | ORT plain WASM (`ort-wasm-simd-threaded.wasm`, single-threaded use) | 12MB |
-| Detection model | 4.6MB |
-| Recognition model (v4 or v5, per benchmark) | 11–16MB |
-| Recognition character dictionary | 26KB–~100KB |
+| Detection model (per benchmark, §6.7) | 1.8–9.9MB |
+| Recognition model (per benchmark, §6.7) | 4.5–21MB |
+| Recognition character list (JSON; extracted at build time from the model's ONNX metadata or its official `inference.yml`) | ~100–300KB |
 | CC-CEDICT, preprocessed compact format; loaded in the background after the engine is ready | 2–4MB |
 
 For each asset:
@@ -134,13 +134,22 @@ snapshot RGBA ─► detect ─► DB postprocess ─► crop & straighten ─�
 - No grayscale, contrast or binarization preprocessing.
 
 ### 6.2 DB postprocess (`ocr/geometry.js`, no OpenCV, no clipper)
-- Binarize the probability map at **0.3**.
-- 4-connected component labeling on a `Uint8Array` (iterative flood fill).
+
+Parameters come from each model's official config, not one global set:
+
+| Detector | thresh | box_thresh | unclip_ratio | max_candidates |
+|---|---|---|---|---|
+| PP-OCRv4 / v5 mobile | 0.3 | 0.6 | 1.5 | 1000 |
+| PP-OCRv6 tiny | 0.2 | 0.4 | 1.4 | 3000 |
+| PP-OCRv6 small | 0.2 | 0.45 | 1.4 | 3000 |
+
+- Binarize the probability map at `thresh`.
+- 8-connected component labeling on a `Uint8Array` (iterative flood fill; this matches OpenCV `findContours`).
 - Per component:
-  - Score = mean probability over its pixels. Drop if **< 0.6**.
-  - Convex hull → minimum-area rectangle (rotating calipers). Drop if the short side **< 3**.
-  - Expand by `d = area × 1.5 / perimeter` (PaddleOCR's unclip ratio; for a rectangle this is exactly "grow each side by d"). Drop if the short side **< 5**.
-- Map the rectangles back to snapshot coordinates. Cap at 1000 candidates.
+  - Convex hull (from each row's leftmost and rightmost pixel) → minimum-area rectangle (rotating calipers). Drop if the short side **< 3**.
+  - Score = mean probability inside that rectangle (PaddleOCR's `box_score_fast`). Drop if **< box_thresh**.
+  - Expand by `d = area × unclip_ratio / perimeter` (for a rectangle, PaddleOCR's polygon offset is exactly "grow each side by d"). Drop if the short side **< 5**.
+- Map the rectangles back to snapshot coordinates. Cap at `max_candidates`.
 
 ### 6.3 Crop (`ocr/image.js`)
 - Bilinear-sample each rectangle into an upright crop (an affine warp along the rectangle's axes).
@@ -149,29 +158,57 @@ snapshot RGBA ─► detect ─► DB postprocess ─► crop & straighten ─�
 
 ### 6.4 Recognition (`ocr/recognize.js`)
 - Resize each crop to height 48, keeping its aspect ratio. Normalize `(x/255 − 0.5)/0.5`, BGR.
-- Sort crops by aspect ratio and run them in batches of 6. Each batch is padded with zeros to the widest crop in that batch.
+- **One line per inference**, zero-padded on the right to max(320, its own width), rounded up to a multiple of 8. Measured during planning on `image.png`:
+  - PaddleOCR's sorted batches of 6 were 4–23% slower on single-threaded WASM, with identical accuracy. Batching only adds padding when there's no parallelism.
+  - Dropping the 320px minimum was ~33% faster but cost accuracy (v5 misread 粿; v6-small read 鲜 as 鮮). The models are trained on 320-wide inputs, so the minimum stays.
 - **CTC decode:** argmax per timestep, collapse repeats, drop blanks (index 0). Character `i` maps to `dict[i−1]`, with a space appended to the dictionary. Each emitted character records the timesteps where it fired.
 - **Character positions:** each timestep covers `paddedWidth / T` pixels of the resized crop. A character's x-range runs from the midpoint with its left neighbour's centre to the midpoint with its right neighbour's centre, clamped to the crop. This range is mapped through the resize scale and the crop transform to a snapshot-space quad. (Same idea as PaddleOCR's `return_word_box`.)
 - Line score = mean max-probability of the emitted characters. Drop lines **< 0.5**.
 - **No row merging:** each detected box is its own line.
 
 ### 6.5 Annotation (`text/annotate.js`)
-- Split the line text into CJK runs (`[一-鿿]+`) and non-CJK runs.
-- Each CJK run is segmented by pinyin-pro on its own, so dishes don't get cross-word context, giving words with per-character tone-marked pinyin. Non-CJK runs become tokens with `pinyin: null`.
+- Split the line's characters into CJK runs (`[一-鿿]`) and non-CJK runs. Each run becomes one token.
+- Each CJK run is converted on its own with `pinyin(run, { type: 'array' })`, which uses word context inside the run but none across runs, giving per-character tone-marked pinyin. Non-CJK runs get `pinyin: null`.
 - Lines without CJK are dropped from the result.
+- pinyin-pro's `segment()` is **not** used for word boundaries: verified during planning, it only groups words with special readings (e.g. 银行) and returns 鱿鱼 and 可口 as single characters. Word boundaries for tap-for-meaning come from CC-CEDICT instead (§7.4).
 
 ### 6.6 Performance tactics
-- Typed arrays only. Buffers are reused across scans where shapes match.
+- Typed arrays only. (Buffer reuse across scans was considered and dropped: planning measured all JS preparation at ~15ms of a ~2s scan, so inference is the only cost worth attacking.)
 - One warm-up inference (det and rec on tiny inputs) right after session creation.
 - ORT session options: `executionProviders: ['wasm']`, `numThreads: 1`, graph optimization `all`.
-- Each scan returns `timings` (`prep`, `det`, `post`, `crop`, `rec`, `annotate`, `total`) and peak WASM memory for the debug panel and the benchmark.
+- Each scan returns `timings` (`prep`, `det`, `post`, `crop`, `rec`, `total`) for the debug panel and the benchmark. Peak memory is measured on device (Plan 2 debug panel); Node's numbers say nothing about Safari.
 
 ### 6.7 Decided by benchmark (`npm run bench`), not by guessing
-- PP-OCRv4 mobile vs PP-OCRv5 mobile (det + rec, each with its own character dictionary).
-- fp32 vs int8 dynamically-quantized recognition.
-- Detection long side: 960 vs 1280.
 
-Rule: pick the smallest/fastest configuration within 1% character error rate (CER) of the most accurate one, provided success criterion 5 holds. Also verify whether GitHub Pages serves `.wasm` compressed, since that affects the first-visit download estimate.
+Candidates. Detectors and recognizers are benchmarked in every combination, all verified to run in ONNX Runtime Web during planning:
+
+| ID | Det size | Rec size | Rec classes | Source |
+|---|---|---|---|---|
+| v4 (mobile) | 4.7MB | 10.9MB | 6,623 + 2 | RapidOCR ModelScope, tag `v3.9.2` |
+| v5 (mobile) | 4.8MB | 16.6MB | 18,383 + 2 | RapidOCR ModelScope, tag `v3.9.2` |
+| v6-tiny | 1.8MB | 4.5MB | 6,904 + 2 | PaddlePaddle official ONNX on HuggingFace, pinned commit |
+| v6-small | 9.9MB | 21.2MB | 18,708 + 2 | PaddlePaddle official ONNX on HuggingFace, pinned commit |
+
+PaddlePaddle's published printed-Chinese recognition accuracy: v5 mobile 86.0, v6-tiny 86.7, v6-small 90.5.
+
+Also compared:
+- Detection long side: 960 vs 1280.
+- (Deferred: int8 quantization. Measure only if the chosen fp32 pair is over ~20MB.)
+
+**Rule:** among configurations that read every required label exactly (success criterion 5), pick the smallest model download, then the fastest. Also verify whether GitHub Pages serves `.wasm` compressed, since that affects the first-visit download estimate.
+
+**Planning measurements** (prototype of this pipeline, `image.png`, single-threaded WASM on the dev machine):
+
+| det + rec | dishes exact | models | total |
+|---|---|---|---|
+| v5 + v5 | 12/12 | 21.5MB | 2.1s |
+| v6-tiny + v6-small | 12/12 | 22.9MB | 2.7s |
+| v6-tiny + v6-tiny | 11/12 (粿→棵) | 6.2MB | 0.75s |
+| v4 + v4 | 10/12 | 15.6MB | 2.2s |
+
+- Detection at 1280 added time and no accuracy.
+- The rule picks **v5 + v5**. Recognition is ~85% of its time, so it may miss criterion 4 (≤ 1.5s) on phones.
+- The ship decision is therefore confirmed **on device** (Plan 2 adds a `?det=&rec=` override and the debug panel's timings). The v6-tiny pair is the fallback if v5 + v5 is too slow there.
 
 ## 7. UI & rendering
 
@@ -195,7 +232,7 @@ Rule: pick the smallest/fastest configuration within 1% character error rate (CE
 - `viewer.js` exposes pure functions for the transform, its inverse and clamping, all unit-tested.
 
 ### 7.4 Tap for meaning
-- Hit-test: inverse-transform the tap point to snapshot space and find the character quad containing it. Its token is the word.
+- Hit-test: inverse-transform the tap point to snapshot space and find the character quad containing it. The word is found by segmenting that character's CJK run with CC-CEDICT forward maximum matching and taking the segment that contains the character.
 - Worker lookup:
   1. The whole word in CC-CEDICT.
   2. Otherwise, a greedy longest-match split of the word, each part with its entries (e.g. 可口面 → 可口 *tasty* + 面 *noodles*).
@@ -232,7 +269,7 @@ Every state has an exit. No error ever requires the user to clear site data manu
 **Memory:**
 - ORT sessions are created once.
 - One snapshot canvas is reused.
-- Peak worker memory is measured by the benchmark and shown in the debug panel.
+- Peak worker memory is measured on device and shown in the debug panel.
 
 **Debug panel** (`?debug`, or long-press About): backend, last scan's per-stage timings, per-asset cache status, app and model versions, last error. This is how on-device problems get reported back.
 
@@ -242,9 +279,10 @@ Layers 1–4 run in GitHub Actions on every push. Deployment requires all of the
 
 1. **Unit (Vitest, Node):** convex hull, min-area rectangle, unclip, crop transform and inverse, CTC decode and character positions, CJK splitting, annotation, dictionary longest-match, viewer transform/inverse/clamp, the `app.js` reducer (every transition, including error states), loader verify-and-retry logic (fetch and Cache API mocked).
 2. **Pipeline golden (Node, onnxruntime-web WASM build):**
-   - vs **RapidOCR reference output**, generated once by `scripts/make-reference.py` and committed to `test/fixtures/reference/`: matched boxes IoU ≥ 0.8, text equal.
+   - *(The RapidOCR reference oracle from the brainstorm was dropped during planning. RapidOCR's current defaults differ from PaddleOCR's official configs, e.g. det normalization and unclip 1.6 vs 1.5, so it isn't a faithful reference. This environment also has no pip. Ground truth tests the outcome that matters, and unit tests pin each algorithm to PaddleOCR's definitions.)*
+   - Structural checks on real output: character quads ordered along the reading direction and inside their line quad.
    - vs **hand-labelled ground truth** (`test/fixtures/labels.json`) for `image.png` plus 4–6 more menu/sign photos (supplied by the user; otherwise openly licensed photos, with their licenses recorded in `test/fixtures/SOURCES.md`): CER under a threshold set from the benchmark baseline, all 12 `image.png` dish names exact, and expected pinyin for those dishes.
-3. **Benchmark (`npm run bench`):** a per-variant table of stage timings, CER, peak memory and download size. Node timings are relative; phone timings come from the debug panel.
+3. **Benchmark (`npm run bench`):** a per-variant table of stage timings, exact matches, CER and model download size. Node timings are relative; phone timings come from the debug panel.
 4. **E2E (Playwright, Chromium + WebKit, production build):**
    - `?img=fixture` → shutter → tokens rendered (asserted via a `data-state` attribute and a test-only result hook).
    - Tap a character → card appears.
@@ -276,10 +314,11 @@ src/
   ocr/               # image.js, detect.js, geometry.js, recognize.js, pipeline.js
   text/              # annotate.js, dict.js
 scripts/
-  fetch-assets.js    # pinned downloads + checksum + manifest
+  models.config.js   # candidate models: pinned URLs, sha256, official params
+  fetch-models.js    # download + verify models, extract character lists
+  fetch-assets.js    # build-time: chosen models + ORT wasm + dict → public/assets + manifest
   build-dict.js      # CC-CEDICT → compact format
   bench.js
-  make-reference.py  # RapidOCR reference outputs (run once)
 test/
   unit/  golden/  e2e/
   fixtures/          # image.png + more photos, labels.json, reference/
