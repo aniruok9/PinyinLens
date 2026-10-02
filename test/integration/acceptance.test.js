@@ -7,6 +7,7 @@ import { loadPng } from '../../scripts/lib/png.js';
 import { DEFAULT_CONFIG } from '../../scripts/models.config.js';
 import { createOcr } from '../../src/ocr/pipeline.js';
 import { annotate } from '../../src/text/annotate.js';
+import { expectCharsInReadingOrder } from '../helpers/structure.js';
 
 const FIXTURES = new URL('../fixtures/', import.meta.url);
 const labels = JSON.parse(readFileSync(new URL('labels.json', FIXTURES), 'utf8'));
@@ -38,5 +39,9 @@ describe(`shipped config: det ${detId}, rec ${recId}, long side ${longSide}`, ()
       expect(token, `no token reads ${dish}`).toBeDefined();
       expect(token.chars.map((c) => c.pinyin).join(' '), dish).toBe(expected);
     }
+  });
+
+  it('places character quads inside their line, in reading order', () => {
+    expectCharsInReadingOrder(lines, expect);
   });
 });

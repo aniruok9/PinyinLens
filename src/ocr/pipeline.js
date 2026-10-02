@@ -10,9 +10,17 @@ const now = () => performance.now();
 //   charset:   recognizer characters (class k = charset[k-1])
 //   detParams: { thresh, boxThresh, unclipRatio, maxCandidates } from scripts/models.config.js
 //   dropScore: lines with lower mean confidence are discarded (PaddleOCR default 0.5)
+// Resolves to { scan, release } after a warm-up run of both models (so ORT's lazy setup is paid
+// here, and a recognizer/charset mismatch fails at creation). Any failure releases both sessions.
 export async function createOcr({ ort, det, rec, charset, detParams, dropScore = 0.5 }) {
   const detSession = await ort.InferenceSession.create(det, SESSION_OPTIONS);
-  const recSession = await ort.InferenceSession.create(rec, SESSION_OPTIONS);
+  let recSession;
+  try {
+    recSession = await ort.InferenceSession.create(rec, SESSION_OPTIONS);
+  } catch (err) {
+    await detSession.release();
+    throw err;
+  }
 
   async function runDet(input, width, height) {
     const feeds = { [detSession.inputNames[0]]: new ort.Tensor('float32', input, [1, 3, height, width]) };
@@ -30,7 +38,6 @@ export async function createOcr({ ort, det, rec, charset, detParams, dropScore =
     return { probs: tensor.data, T, C };
   }
 
-  // Runs both models once on tiny inputs so the first real scan doesn't pay ORT's lazy setup.
   async function warmup() {
     await runDet(new Float32Array(3 * 32 * 32), 32, 32);
     await runRec({ data: new Float32Array(3 * 48 * 320), dims: [1, 3, 48, 320] });
@@ -38,7 +45,22 @@ export async function createOcr({ ort, det, rec, charset, detParams, dropScore =
 
   // image: RGBA { data, width, height }. Returns { lines, timings } with all coordinates in
   // image pixels. Line: { quad, vertical, score, text, chars: [{ ch, prob, quad }] }.
-  async function scan(image, { longSide = 960 } = {}) {
+  // Line and char quads share one convention: [start-top, end-top, end-bottom, start-bottom],
+  // start->end being the reading direction and "top" the crop's top edge. Horizontal lines are
+  // image TL,TR,BR,BL; for vertical lines quad[0]->quad[1] runs down the column's right edge.
+  let scanning = false;
+  async function scan(image, opts) {
+    if (scanning) throw new Error('scan already in progress');
+    if (!(image.width >= 1 && image.height >= 1)) throw new Error('scan: image must be at least 1x1 pixels');
+    scanning = true;
+    try {
+      return await scanImage(image, opts);
+    } finally {
+      scanning = false;
+    }
+  }
+
+  async function scanImage(image, { longSide = 960 } = {}) {
     const timings = {};
     let t = now();
     const size = detInputSize(image.width, image.height, longSide);
@@ -68,7 +90,7 @@ export async function createOcr({ ort, det, rec, charset, detParams, dropScore =
       const decoded = ctcDecode(probs, 0, T, C, charset);
       const spans = charSpans(decoded.chars, T, batch.dims[3], batch.widths[0], crop.width);
       lines.push({
-        quad: boxes[i].quad,
+        quad: frameQuad(frame, 0, crop.width),
         vertical,
         score: decoded.score,
         text: decoded.text,
@@ -82,9 +104,26 @@ export async function createOcr({ ort, det, rec, charset, detParams, dropScore =
   }
 
   async function release() {
-    await detSession.release();
-    await recSession.release();
+    if (scanning) throw new Error('release: scan already in progress');
+    let first;
+    try {
+      await detSession.release();
+    } catch (err) {
+      first = err;
+    }
+    try {
+      await recSession.release();
+    } catch (err) {
+      first ??= err;
+    }
+    if (first) throw first;
   }
 
-  return { scan, warmup, release };
+  try {
+    await warmup();
+  } catch (err) {
+    await release().catch(() => {});
+    throw err;
+  }
+  return { scan, release };
 }

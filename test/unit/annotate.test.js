@@ -18,6 +18,11 @@ function line(text, extra = {}) {
 const pinyinOf = (token) => token.chars.map((c) => c.pinyin);
 
 describe('annotateLine', () => {
+  it('gives no pinyin to a character pinyin-pro only echoes back', () => {
+    const [token] = annotateLine(line('匁')).tokens;
+    expect(pinyinOf(token)).toEqual([null]);
+  });
+
   it('gives each CJK character its tone-marked pinyin and keeps its quad', () => {
     const [token] = annotateLine(line('阿公可口面')).tokens;
     expect(token.text).toBe('阿公可口面');

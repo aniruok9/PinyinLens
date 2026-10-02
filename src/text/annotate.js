@@ -20,7 +20,12 @@ export function annotateLine(line) {
     tokens.push({
       text,
       isCJK: cjk,
-      chars: run.map((c, k) => ({ ch: c.ch, pinyin: cjk ? readings[k] : null, quad: c.quad })),
+      // pinyin-pro echoes back rare hanzi it has no reading for; that is not pinyin.
+      chars: run.map((c, k) => ({
+        ch: c.ch,
+        pinyin: cjk && readings[k] !== c.ch ? readings[k] : null,
+        quad: c.quad,
+      })),
     });
     i = j;
   }

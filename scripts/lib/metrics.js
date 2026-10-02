@@ -32,6 +32,6 @@ export function scoreRequired(required, lines) {
   return {
     results,
     exact: results.filter((r) => r.exact).length,
-    meanCer: results.reduce((sum, r) => sum + r.cer, 0) / results.length,
+    meanCer: results.length ? results.reduce((sum, r) => sum + r.cer, 0) / results.length : 0,
   };
 }

@@ -29,7 +29,6 @@ for (const det of dets) {
     const d = loadDet(det);
     const r = loadRec(rec);
     const ocr = await createOcr({ ort, det: d.bytes, rec: r.bytes, charset: r.charset, detParams: d.params });
-    await ocr.warmup();
     for (const longSide of longSides) {
       const times = { det: [], rec: [], total: [] };
       let exact = 0;

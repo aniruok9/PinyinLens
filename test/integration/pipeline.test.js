@@ -5,6 +5,7 @@ import { scoreRequired } from '../../scripts/lib/metrics.js';
 import { ort } from '../../scripts/lib/ort-node.js';
 import { loadPng } from '../../scripts/lib/png.js';
 import { createOcr } from '../../src/ocr/pipeline.js';
+import { expectCharsInReadingOrder } from '../helpers/structure.js';
 
 const FIXTURES = new URL('../fixtures/', import.meta.url);
 const labels = JSON.parse(readFileSync(new URL('labels.json', FIXTURES), 'utf8'));
@@ -20,7 +21,6 @@ describe('pipeline on the menu fixture (v4 baseline)', () => {
     const det = loadDet('v4');
     const rec = loadRec('v4');
     ocr = await createOcr({ ort, det: det.bytes, rec: rec.bytes, charset: rec.charset, detParams: det.params });
-    await ocr.warmup();
     result = await ocr.scan(loadPng(new URL(NAME, FIXTURES)));
   });
   afterAll(() => ocr?.release());
@@ -37,18 +37,19 @@ describe('pipeline on the menu fixture (v4 baseline)', () => {
   });
 
   it('places character quads inside their line, in reading order', () => {
-    for (const line of result.lines) {
-      const xs = line.quad.map((p) => p[0]);
-      const ys = line.quad.map((p) => p[1]);
-      const inside = ([x, y]) =>
-        x >= Math.min(...xs) - 2 && x <= Math.max(...xs) + 2 && y >= Math.min(...ys) - 2 && y <= Math.max(...ys) + 2;
-      const [tl, tr, , bl] = line.quad;
-      const axis = line.vertical ? [bl[0] - tl[0], bl[1] - tl[1]] : [tr[0] - tl[0], tr[1] - tl[1]];
-      const along = (q) => ((q[0][0] + q[2][0]) / 2) * axis[0] + ((q[0][1] + q[2][1]) / 2) * axis[1];
-      line.chars.forEach((c, k) => {
-        expect(c.quad.every(inside), `${line.text}[${k}] outside its line`).toBe(true);
-        if (k > 0) expect(along(c.quad), `${line.text}[${k}] out of order`).toBeGreaterThan(along(line.chars[k - 1].quad));
-      });
-    }
+    expectCharsInReadingOrder(result.lines, expect);
+  });
+
+  it('rejects a second scan while one is in flight, and release during a scan', async () => {
+    const first = ocr.scan(loadPng(new URL(NAME, FIXTURES)));
+    await expect(ocr.scan(loadPng(new URL(NAME, FIXTURES)))).rejects.toThrow('scan already in progress');
+    await expect(ocr.release()).rejects.toThrow('scan already in progress');
+    await first;
+  });
+
+  it('rejects an empty image with a clear message', async () => {
+    await expect(ocr.scan({ data: new Uint8ClampedArray(0), width: 0, height: 0 })).rejects.toThrow(
+      'scan: image must be at least 1x1 pixels',
+    );
   });
 });

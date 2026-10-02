@@ -29,4 +29,8 @@ describe('scoreRequired', () => {
     ]);
     expect(meanCer).toBeCloseTo((0 + 1 / 3 + 1) / 3, 6);
   });
+
+  it('scores no labels as mean CER 0, not NaN', () => {
+    expect(scoreRequired([], lines)).toMatchObject({ exact: 0, meanCer: 0 });
+  });
 });

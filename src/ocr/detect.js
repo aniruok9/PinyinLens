@@ -51,6 +51,7 @@ export function dbPostprocess(prob, width, height, params, target) {
   const sx = target.width / width;
   const sy = target.height / height;
   const boxes = [];
+  // Matches PaddleOCR: maxCandidates caps the contours before any filtering.
   for (const pixels of connectedComponents(mask, width, height).slice(0, params.maxCandidates)) {
     const rect = minAreaRect(convexHull(rowExtremes(pixels, width)));
     if (!rect || shortSide(rect) < 3) continue;

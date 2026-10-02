@@ -85,6 +85,8 @@ Token = { text: string, isCJK: bool, chars: Char[] }      // a contiguous CJK ru
 Char  = { ch: string, pinyin: string | null, quad: [[x,y]×4] }
 ```
 
+Line and char quads share one convention: `[start-top, end-top, end-bottom, start-bottom]`, where start→end is the reading direction and "top" is the cropped line's top edge. Horizontal lines are image TL,TR,BR,BL, and the overlay places pinyin along quad[3]→quad[2]. For vertical lines (crop rotated 90° CCW) quad[0]→quad[1] runs down the column's right edge; "to the right" of the column is that edge.
+
 ## 5. Loading & caching
 
 **Service worker (one, vite-plugin-pwa, `generateSW`):**
@@ -129,7 +131,7 @@ snapshot RGBA ─► detect ─► DB postprocess ─► crop & straighten ─�
 ```
 
 ### 6.1 Detection (`ocr/detect.js`)
-- Input: the RGBA region that was visible at freeze time (§7.1). Resize so the long side is 960 (benchmark: 960 vs 1280). Round both dimensions up to multiples of 32.
+- Input: the RGBA region that was visible at freeze time (§7.1). Resize so the long side is 960 (benchmark: 960 vs 1280). Round each dimension to the nearest multiple of 32 (as PaddleOCR's DetResizeForTest does).
 - Normalize exactly as PaddleOCR does: BGR channel order, `(x/255 − mean)/std` with mean `[0.485, 0.456, 0.406]` and std `[0.229, 0.224, 0.225]`. Fill a `Float32Array` (NCHW) in one pass.
 - No grayscale, contrast or binarization preprocessing.
 
@@ -195,7 +197,7 @@ Also compared:
 - Detection long side: 960 vs 1280.
 - (Deferred: int8 quantization. Measure only if the chosen fp32 pair is over ~20MB.)
 
-**Rule:** among configurations that read every required label exactly (success criterion 5), pick the fastest, then the smallest model download. (Changed during execution: picking the smallest download first chose v6-small + v4 @ 1280, which saved 0.8MB but scanned 29% slower and read all 12 dishes at only one detection size.) Also verify whether GitHub Pages serves `.wasm` compressed, since that affects the first-visit download estimate.
+**Rule:** among configurations that read every required label exactly (success criterion 5), pick the fastest, then the smallest model download. (Changed during execution: picking the smallest download first chose v6-small + v4 @ 1280, which saved 0.8MB but scanned ~24–29% slower across two benchmark runs and read all 12 dishes at only one detection size.) Also verify whether GitHub Pages serves `.wasm` compressed, since that affects the first-visit download estimate.
 
 **Planning measurements** (prototype of this pipeline, `image.png`, single-threaded WASM on the dev machine):
 
