@@ -44,7 +44,7 @@ Each of these was verified by reading the code and the built `dist/`.
 2. Works end-to-end on a recent iPhone (Safari and Home Screen) and an Android flagship (device checklist, §9.5).
 3. Repeat visit: ready to scan in ≤ 2s, with zero network requests (airplane mode works).
 4. Freeze → pinyin rendered in ≤ 1.5s for an `image.png`-class scene on those phones.
-5. All 12 dish names in `image.png` recognized exactly, with pinyin shown under the correct characters: 鲍贝鱿鱼可口面, 阿公可口面, 海鲜可口面, 鲍鱼美味可口面, 美味可口面, 辣椒可口面, 海鲜伊面, 猪肉米粉, 猪肉面线, 面粉粿, 特制生面, 海鲜生面. (All 12 dishes' characters, including 粿, are in the PP-OCRv4 dictionary, so neither model version is ruled out up front.)
+5. At least 90% of the labelled Chinese phrases across the fixture set (`test/fixtures/labels.json`: 104 phrases on 6 user-supplied menu photos) are read exactly by the shipped models, and every KKM dish name that is read exactly gets the expected pinyin under the correct characters. *(Revised 2026-10-03, by user decision: the original criterion, all 12 KKM dish names exact, was fitted to one photo. On all six menus, the fast PP-OCRv6-tiny pair reads 93% of phrases and is ~3× faster than the v5 pair that passed the old criterion, which reads 91%. The user chose speed; v6-tiny misreads a few rare characters such as 粿 and 嬷.)*
 
 ## 4. Architecture
 
@@ -197,7 +197,7 @@ Also compared:
 - Detection long side: 960 vs 1280.
 - (Deferred: int8 quantization. Measure only if the chosen fp32 pair is over ~20MB.)
 
-**Rule:** among configurations that read every required label exactly (success criterion 5), pick the fastest, then the smallest model download. (Changed during execution: picking the smallest download first chose v6-small + v4 @ 1280, which saved 0.8MB but scanned ~24–29% slower across two benchmark runs and read all 12 dishes at only one detection size.) Also verify whether GitHub Pages serves `.wasm` compressed, since that affects the first-visit download estimate.
+**Rule:** among configurations that read at least 90% of all labelled phrases exactly (success criterion 5), pick the fastest, then the smallest model download. Labels match anywhere inside a recognized line, so one line holding several dishes (辣椒板面 / 幼面 / 面粉粿) scores each of them. (History: Plan 1 first picked the smallest download among configurations reading all 12 KKM dishes, then the fastest such configuration (v5 + v5). The rule was rebased on all six fixtures on 2026-10-03.) Also verify whether GitHub Pages serves `.wasm` compressed, since that affects the first-visit download estimate.
 
 **Planning measurements** (prototype of this pipeline, `image.png`, single-threaded WASM on the dev machine):
 
@@ -209,8 +209,20 @@ Also compared:
 | v4 + v4 | 10/12 | 15.6MB | 2.2s |
 
 - Detection at 1280 added time and no accuracy.
-- The rule picks **v5 + v5**. Recognition is ~85% of its time, so it may miss criterion 4 (≤ 1.5s) on phones.
-- The ship decision is therefore confirmed **on device** (Plan 2 adds a `?det=&rec=` override and the debug panel's timings). The v6-tiny pair is the fallback if v5 + v5 is too slow there.
+- On this one photo the rule picked **v5 + v5**.
+
+**Six-fixture measurements** (2026-10-03, 104 labelled phrases, 960px, same machine; time is the sum over six menus):
+
+| det + rec | phrases exact | models | total for 6 menus |
+|---|---|---|---|
+| v6-tiny + v6-tiny | 97/104 (93%) | 6.2MB | 6.5s |
+| v5 + v6-tiny | 97/104 | 9.3MB | 7.5s |
+| v5 + v5 | 95/104 (91%) | 21.5MB | 20.2s |
+| v6-tiny + v6-small | 100/104 | 22.9MB | 25.1s |
+| v6-small + v6-small | 101/104 (97%) | 31.0MB | 25.5s |
+
+- **Shipping v6-tiny + v6-tiny** (user decision 2026-10-03: speed over the last ~4% of accuracy).
+- Recognition dominates scan time on busy menus. v6-small can still be compared on device with Plan 2's `?det=&rec=` override.
 
 ## 7. UI & rendering
 
@@ -283,7 +295,7 @@ Layers 1–4 run in GitHub Actions on every push. Deployment requires all of the
 2. **Pipeline golden (Node, onnxruntime-web WASM build):**
    - *(The RapidOCR reference oracle from the brainstorm was dropped during planning. RapidOCR's current defaults differ from PaddleOCR's official configs, e.g. det normalization and unclip 1.6 vs 1.5, so it isn't a faithful reference. This environment also has no pip. Ground truth tests the outcome that matters, and unit tests pin each algorithm to PaddleOCR's definitions.)*
    - Structural checks on real output: character quads ordered along the reading direction and inside their line quad.
-   - vs **hand-labelled ground truth** (`test/fixtures/labels.json`) for `image.png` plus 4–6 more menu/sign photos (supplied by the user; otherwise openly licensed photos, with their licenses recorded in `test/fixtures/SOURCES.md`): CER under a threshold set from the benchmark baseline, all 12 `image.png` dish names exact, and expected pinyin for those dishes.
+   - vs **hand-labelled ground truth** (`test/fixtures/labels.json`): the KKM photo plus 5 more menu photos supplied by the user (104 phrases). Labels match anywhere inside a line; the shipped models must read ≥ 90% exactly, and the expected pinyin is checked for every KKM dish they read.
 3. **Benchmark (`npm run bench`):** a per-variant table of stage timings, exact matches, CER and model download size. Node timings are relative; phone timings come from the debug panel.
 4. **E2E (Playwright, Chromium + WebKit, production build):**
    - `?img=fixture` → shutter → tokens rendered (asserted via a `data-state` attribute and a test-only result hook).
