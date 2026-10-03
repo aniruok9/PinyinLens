@@ -7,3 +7,6 @@ public/*.mjs
 bench-results.json
 .DS_Store
 *.local
+public/ocr/
+test-results/
+playwright-report/
