@@ -112,7 +112,7 @@ For each asset:
 Old `assets-*` caches are deleted after a new manifest loads successfully.
 
 **Asset sourcing:**
-- `scripts/fetch-assets.js` (run in CI and by `npm run fetch-assets` locally) downloads pinned assets, verifies their checksums, and writes `public/assets/` plus `asset-manifest.json` (`url`, `size`, `sha256`). Assets are served same-origin from GitHub Pages and kept out of git.
+- `scripts/fetch-assets.js` (part of `npm run build`, after `npm run fetch-models` has downloaded and verified the pinned models) copies the shipped models and the ORT wasm into `public/ocr/` and writes `public/ocr/manifest.json` (`file`, `size`, `sha256` per asset, detector params, default config). Assets are served same-origin from GitHub Pages and kept out of git.
 - Models: HuggingFace URLs pinned to a commit revision.
 - CC-CEDICT: a snapshot mirrored as a GitHub Release asset of this repo, converted by `scripts/build-dict.js` into a compact format: simplified headword → [tone-marked pinyin, first 3 glosses].
 
@@ -317,20 +317,25 @@ Layers 1–4 run in GitHub Actions on every push. Deployment requires all of the
 index.html
 public/icons/
 src/
-  main.js            # feature check, bootstrap, wiring
-  app.js             # state machine (pure reducer + effects)
-  camera.js          # stream lifecycle, region capture
-  viewer.js          # zoom/pan math (pure) + pointer gesture binding
-  overlay.js         # screen-space pinyin rendering, hit-testing
-  loader.js          # manifest, Cache API, SHA-256, progress, retry
-  ui/                # card.js, toast.js, debug.js, intro.js
-  worker/worker.js   # message protocol, ORT sessions, warm-up
+  app/               # main thread
+    main.js          # boot, engine, camera, freeze/resume, overlay, lifecycle wiring
+    state.js         # state machine (pure reducer)
+    assets.js        # manifest, Cache API, SHA-256, progress, retry
+    engine.js        # OCR worker client: one request at a time, watchdog, respawn
+    camera.js        # stream lifecycle, region capture
+    view.js          # zoom/pan math (pure)
+    gestures.js      # pointer pinch/drag, wheel zoom
+    overlay.js       # screen-space pinyin layout and drawing
+    params.js        # ?img / ?det / ?rec / ?debug
+    ui.js            # render state into the DOM, debug panel
+    style.css
+  worker/            # core.js (message protocol, Node-testable), ocr.worker.js (entry)
   ocr/               # image.js, detect.js, geometry.js, recognize.js, pipeline.js
-  text/              # annotate.js, dict.js
+  text/              # annotate.js (dict.js arrives with Plan 3)
 scripts/
   models.config.js   # candidate models: pinned URLs, sha256, official params
   fetch-models.js    # download + verify models, extract character lists
-  fetch-assets.js    # build-time: chosen models + ORT wasm + dict → public/assets + manifest
+  fetch-assets.js    # build-time: shipped models + ORT wasm → public/ocr/ + manifest.json
   build-dict.js      # CC-CEDICT → compact format
   bench.js
 test/

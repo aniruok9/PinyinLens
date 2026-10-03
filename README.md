@@ -1,67 +1,47 @@
-# Pinyin Lens
+# PinyinLens
 
-A Progressive Web App that reads Chinese text through your phone's camera and overlays hanyu pinyin (with tone marks like `nǐ hǎo`) on top of each character. Point, freeze, scan.
+Point your phone's camera at Chinese text, tap to freeze, and read it with tone-marked pinyin under every character.
+Everything runs on the phone: no server, no account, and it works offline after the first visit.
 
-**Live demo:** https://aniruok9.github.io/PinyinLens/
+**Live:** https://aniruok9.github.io/PinyinLens/
 
-## Features
+## Using it
 
-- **Freeze-to-scan UX** — Live viewfinder with a single shutter button. Tap to freeze the frame, OCR runs once, pinyin appears as a static overlay. Tap again to resume.
-- **Per-character pinyin** — Each Chinese character gets its own pinyin syllable rendered directly below it. Handles polyphonic characters via word-level context.
-- **Grid-aware** — Restaurant menus and similar grid layouts: text groups separated by whitespace are converted independently, so `宫保鸡丁 阿公可口面` renders as two distinct dishes instead of one run-on phrase.
-- **Pinch & pan** — Pinch-to-zoom on the live feed; pinch + drag on the frozen frame like a photo viewer. Zoom floor on the frozen state is the zoom level at freeze time.
-- **Fully offline** — ~20MB of models + runtime cached on first load. Works in airplane mode after that.
-- **Zero backend** — Everything runs in the browser. Static site on GitHub Pages, no API keys, no tracking.
+1. Open the link on your phone and tap **Start camera**. The first visit downloads the reading engine once (up to 20 MB).
+2. Aim at a menu or sign. Pinch to zoom in on small text: the scan uses only what's on screen, so zooming in helps.
+3. Tap the shutter to freeze and scan. Pinch and drag to look around; tap again to go back to the camera.
+
+On iPhone, Share › Add to Home Screen keeps the app and its engine available offline.
+
+Add `?debug` to the URL for a panel with timings and versions. `?det=v6-small&rec=v6-small` tries the larger,
+slower, more accurate models.
 
 ## How it works
 
-| Stage | Tech |
+| Stage | Code |
 |---|---|
-| Camera | `getUserMedia` with `facingMode: environment`, native FPS live feed |
-| OCR | PaddleOCR (PP-OCRv3 detection + PP-OCRv4 recognition) via [`@gutenye/ocr-browser`](https://github.com/gutenye/ocr) on top of ONNX Runtime Web |
-| Pinyin | [`pinyin-pro`](https://github.com/zh-lx/pinyin-pro) — MaxProbability word segmentation with polyphonic disambiguation |
-| Rendering | Canvas 2D overlay aligned to the video's `object-fit: contain` box |
-| Hosting | GitHub Pages + `coi-serviceworker` to enable `SharedArrayBuffer` (required by ONNX multi-threaded WASM) |
+| Camera, zoom, freeze | `src/app/` (`camera.js`, `view.js`, `gestures.js`, `main.js`) |
+| Text detection and recognition | PaddleOCR PP-OCRv6-tiny models on ONNX Runtime Web (WASM, one thread) in a Web Worker: `src/worker/`, `src/ocr/` |
+| Pinyin | pinyin-pro, per run of Chinese characters: `src/text/annotate.js` |
+| Overlay | screen-space canvas, redrawn on zoom so it stays sharp: `src/app/overlay.js` |
+| Offline | one service worker for the app shell (vite-plugin-pwa); models in the Cache API, SHA-256 verified: `src/app/assets.js` |
 
-No Web Worker for OCR — the library touches DOM APIs, so it runs on the main thread. ONNX inference itself uses background WASM threads via `SharedArrayBuffer`.
+Design and decisions: `docs/superpowers/specs/2026-10-02-pinyinlens-rebuild-design.md`.
+Model comparison: `docs/benchmarks/2026-10-03-ocr-models.md`.
 
-## Local development
+## Development
 
 ```bash
 npm install
-npm run dev         # Vite dev server
-npm run build       # production build to dist/
-npm run preview     # serve the production build locally
+npm run fetch-models              # pinned models into models/ (~75 MB, once)
+npm test                          # unit + integration tests (real models, in Node)
+npm run dev                       # http://localhost:5173/PinyinLens/ (add ?img=<url> to scan a photo)
+npm run build && npm run test:e2e # production build + Playwright tests
+npm run bench                     # compare models on test/fixtures
 ```
 
-The dev server may fail to load ONNX WASM helper imports from `public/` in some Vite configurations. If you hit `Failed to load /ort-wasm-simd-threaded.jsep.mjs`, use `npm run build && npm run preview` instead.
-
-`postinstall` runs `scripts/copy-wasm.js` to copy ONNX Runtime WASM artifacts into `public/`.
-
-## Browser support
-
-- **Android Chrome** — full support including WebGPU backend (future-enabled).
-- **iOS Safari 16.4+** — WASM SIMD backend. WebGPU is force-disabled (ONNX Runtime JSEP causes CPU/memory spikes on Safari; see onnxruntime#26827).
-- **Firefox** — forced to single-threaded WASM (Firefox `crossOriginIsolated` behavior is inconsistent on Android).
-- **Desktop browsers** — work fine; need an attached camera or they'll report "Requested device not found".
-
-## Project structure
-
-```
-src/
-  main.js       # camera setup, freeze/unfreeze flow, UI wiring
-  camera.js     # getUserMedia + stream lifecycle + iOS visibilitychange recovery
-  ocr.js        # @gutenye/ocr-browser wrapper + model loading with progress
-  pinyin.js     # splitAndConvert(): CJK-run segmentation + weighted positioning
-  overlay.js    # canvas rendering, per-character pinyin placement
-  zoom.js       # pinch-to-zoom + drag-to-pan gesture handler
-public/
-  coi-serviceworker.min.js   # COOP/COEP header injection for SharedArrayBuffer
-  ort-wasm-*                 # ONNX Runtime WASM artifacts (copied by postinstall)
-```
-
-See [`Claude.md`](./Claude.md) for the full architecture spec and rationale behind key technical decisions.
+Pushing to `main` runs all tests and deploys to GitHub Pages (`.github/workflows/deploy.yml`).
 
 ## License
 
-MIT.
+MIT. OCR models: PaddleOCR (Apache-2.0), via PaddlePaddle and RapidOCR releases.

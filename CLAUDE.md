@@ -18,9 +18,14 @@ Implementation plans: `docs/superpowers/plans/`.
 ## Commands
 - `npm test`: unit + integration tests (integration needs `npm run fetch-models` first)
 - `npm run fetch-models`: download pinned models into `models/` (gitignored), verify SHA-256
-- `npm run bench`: model × size benchmark on `test/fixtures`
+- `npm run dev`: dev server at http://localhost:5173/PinyinLens/ (`?img=<url>` scans a still image, `?debug` shows timings)
+- `npm run build`: publish shipped models to `public/ocr/` (gitignored) and build `dist/`
+- `npm run test:e2e`: Playwright against the build (run `npm run build` first)
+- `npm run bench`: model benchmark on `test/fixtures` (labels in `test/fixtures/labels.json`)
 
 ## Environment notes
 - npm's default cache may be read-only in the sandbox: `npm_config_cache=$TMPDIR/npm-cache npm install`.
 - Behind the sandbox proxy, Node's fetch needs `NODE_USE_ENV_PROXY=1`.
 - Model hosts: `www.modelscope.cn`, `huggingface.co`, `*.hf.co`.
+- If Playwright's Chromium can't start (missing system libraries), point `PW_CHROMIUM_PATH` at a working
+  Chromium and `LD_LIBRARY_PATH` at extracted libs; the config already passes `--no-proxy-server`.
