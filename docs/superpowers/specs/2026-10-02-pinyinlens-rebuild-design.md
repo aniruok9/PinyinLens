@@ -287,6 +287,8 @@ Every state has an exit. No error ever requires the user to clear site data manu
 
 **Debug panel** (`?debug`, or long-press About): backend, last scan's per-stage timings, per-asset cache status, app and model versions, last error. This is how on-device problems get reported back.
 
+**Not yet built (after Plan 2, 2026-10-04):** while a download retries, the shutter's progress ring simply waits (no "Download interrupted, retrying" text); after the retries the error card appears as specified. The debug panel shows versions, models, engine start time, last-scan timings and the last error, but not yet the backend, per-asset cache status or peak memory, and it opens with `?debug` only (long-press About comes with Plan 3's About sheet).
+
 ## 9. Testing
 
 Layers 1–4 run in GitHub Actions on every push. Deployment requires all of them to pass.
@@ -304,6 +306,7 @@ Layers 1–4 run in GitHub Actions on every push. Deployment requires all of the
    - Offline reload still scans.
    - A corrupted cached model is recovered automatically.
    - Exactly one navigation per load (no reloads).
+   - *(Plan 2 runs Chromium only. A WebKit project is deferred: no WebKit build could run in the build sandbox to verify it, and Linux WebKit isn't iOS Safari. iPhone is covered by the on-device checklist.)*
 5. **On-device checklist (manual, acceptance gate):** on a recent iPhone (Safari + Home Screen app) and an Android flagship (Chrome):
    - First visit, and an offline repeat visit.
    - Scan `image.png` shown on a monitor, and a real menu.

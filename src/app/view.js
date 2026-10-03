@@ -28,6 +28,15 @@ export function clampView(view, contentW, contentH, viewW, viewH, maxScale) {
   return { scale, tx: axis(view.tx, contentW, viewW), ty: axis(view.ty, contentH, viewH) };
 }
 
+// The view after the screen changes from oldW x oldH to newW x newH (rotation): the same zoom
+// relative to fit, with the content that was at the screen centre still at the centre. Unclamped.
+export function resizeView(view, contentW, contentH, oldW, oldH, newW, newH) {
+  const scale = (view.scale / fitScale(contentW, contentH, oldW, oldH)) * fitScale(contentW, contentH, newW, newH);
+  const cx = (oldW / 2 - view.tx) / view.scale;
+  const cy = (oldH / 2 - view.ty) / view.scale;
+  return { scale, tx: newW / 2 - cx * scale, ty: newH / 2 - cy * scale };
+}
+
 // Zooms by `factor`, keeping the content under screen point (px, py) in place.
 export const zoomAt = (view, factor, px, py) => ({
   scale: view.scale * factor,

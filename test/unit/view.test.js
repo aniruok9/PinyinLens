@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { clampView, cssTransform, fitScale, liveView, panBy, toScreen, visibleRegion, zoomAt } from '../../src/app/view.js';
+import { clampView, cssTransform, fitScale, liveView, panBy, resizeView, toScreen, visibleRegion, zoomAt } from '../../src/app/view.js';
 
 describe('liveView', () => {
   it('fits and centres the content at zoom 1', () => {
@@ -64,5 +64,24 @@ describe('zoomAt / panBy / cssTransform', () => {
 
   it('renders a CSS matrix', () => {
     expect(cssTransform({ scale: 2, tx: 3, ty: 4 })).toBe('matrix(2, 0, 0, 2, 3, 4)');
+  });
+});
+
+describe('resizeView', () => {
+  const close = (actual, expected) => actual.forEach((v, i) => expect(v).toBeCloseTo(expected[i], 6));
+
+  it('keeps a fitted view fitted when the screen rotates', () => {
+    const landscape = clampView({ scale: 0, tx: 0, ty: 0 }, 1479, 883, 844, 390, 100);
+    const portrait = resizeView(landscape, 1479, 883, 844, 390, 390, 844);
+    expect(portrait.scale).toBeCloseTo(fitScale(1479, 883, 390, 844));
+    close(toScreen(portrait, [1479 / 2, 883 / 2]), [195, 422]);
+  });
+
+  it('keeps the zoom relative to fit and the content under the screen centre', () => {
+    const view = { scale: 2 * fitScale(1000, 500, 400, 800), tx: -100, ty: 50 };
+    const centre = [(200 - view.tx) / view.scale, (400 - view.ty) / view.scale];
+    const resized = resizeView(view, 1000, 500, 400, 800, 800, 400);
+    expect(resized.scale / fitScale(1000, 500, 800, 400)).toBeCloseTo(2);
+    close(toScreen(resized, centre), [400, 200]);
   });
 });

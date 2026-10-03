@@ -29,16 +29,18 @@ function fakeCaches() {
 // fetch stand-in serving `files` (name → text); `failures` makes the next N requests for a file fail.
 function fakeFetch(files, failures = {}) {
   const calls = [];
-  const fetchFn = async (url) => {
+  const options = [];
+  const fetchFn = async (url, init) => {
     const name = String(url).slice(BASE.length);
     calls.push(name);
+    options.push(init);
     if (failures[name] > 0) {
       failures[name]--;
       return new Response('nope', { status: 503 });
     }
     return name in files ? new Response(bytes(files[name])) : new Response('missing', { status: 404 });
   };
-  return { fetchFn, calls };
+  return { fetchFn, calls, options };
 }
 
 const loader = (fetchFn, cacheStorage) =>
@@ -104,6 +106,22 @@ describe('createAssetLoader', () => {
     expect([...caches.stores.keys()]).toEqual(['unrelated', 'pinyinlens-assets-v1']);
     await assets.clear();
     expect([...caches.stores.keys()]).toEqual(['unrelated']);
+  });
+
+  it('revalidates downloads with the server instead of trusting the browser HTTP cache', async () => {
+    // After a deploy changes a file under the same name, a stale HTTP-cached copy would fail the
+    // checksum on every retry, and "Reset app data" can't clear the HTTP cache.
+    const { fetchFn, options } = fakeFetch(files);
+    await loader(fetchFn, fakeCaches()).load(manifest, entries);
+    expect(options.map((o) => o?.cache)).toEqual(['no-cache', 'no-cache']);
+  });
+
+  it('still returns the files when the cache refuses to store them', async () => {
+    const caches = fakeCaches();
+    const open = caches.open;
+    caches.open = async (name) => ({ ...(await open(name)), put: async () => Promise.reject(new Error('QuotaExceededError')) });
+    const out = await loader(fakeFetch(files).fetchFn, caches).load(manifest, entries);
+    expect(text(out.get('b.bin'))).toBe('bravo!');
   });
 
   it('loads the manifest from the base URL', async () => {

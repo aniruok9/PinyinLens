@@ -33,7 +33,9 @@ export function createAssetLoader({
   }
 
   async function downloadOnce(entry, onBytes) {
-    const response = await fetchFn(urlOf(entry.file));
+    // Revalidate with the server: after a deploy changes a file under the same name, a stale
+    // HTTP-cached copy would fail the checksum on every retry.
+    const response = await fetchFn(urlOf(entry.file), { cache: 'no-cache' });
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
     const reader = response.body.getReader();
     const chunks = [];
@@ -82,7 +84,9 @@ export function createAssetLoader({
           loaded.set(entry.file, bytes);
           report();
         });
-        await cache.put(urlOf(entry.file), new Response(buffer)); // the Response copies the bytes
+        // The Response copies the bytes. Caching is best effort: without it (storage full, restricted
+        // private mode) this visit still works and the next one downloads again.
+        await cache.put(urlOf(entry.file), new Response(buffer)).catch(() => {});
       }
       loaded.set(entry.file, entry.size);
       report();

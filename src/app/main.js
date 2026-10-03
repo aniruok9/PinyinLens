@@ -6,7 +6,7 @@ import { drawLabels, labelFont, layoutLabels } from './overlay.js';
 import { chooseModels, readParams } from './params.js';
 import { initialState, reduce } from './state.js';
 import { render, renderDebug } from './ui.js';
-import { clampView, cssTransform, fitScale, liveView, panBy, visibleRegion, zoomAt } from './view.js';
+import { clampView, cssTransform, fitScale, liveView, panBy, resizeView, visibleRegion, zoomAt } from './view.js';
 
 // WebAssembly SIMD probe (as in wasm-feature-detect): a tiny module using one v128 instruction.
 const SIMD_PROBE = new Uint8Array([
@@ -63,6 +63,8 @@ let state = initialState;
 let engine = null;
 let source = null; // the live <video>, or the <img> under ?img=
 let stream = null;
+let restarting = null; // the camera re-open in flight, so overlapping triggers open it once
+let viewport = { width: innerWidth, height: innerHeight };
 let liveZoom = 1;
 let frozen = null; // { region, view, lines } while scanning or frozen
 let noticeTimer = 0;
@@ -139,7 +141,9 @@ async function startCamera() {
       await els.still.decode();
       source = els.still;
     } else {
+      els.live.hidden = false; // iOS won't start playing a hidden video
       stream = await openCamera(els.live);
+      watchTrack(stream);
       source = els.live;
     }
     storage.set(STARTED_KEY, '1');
@@ -151,12 +155,27 @@ async function startCamera() {
   }
 }
 
-async function restartCamera() {
-  try {
-    stream = await openCamera(els.live);
-    layoutLive();
-  } catch (err) {
-    dispatch({ type: 'fatal', kind: 'camera', message: err.message });
+function restartCamera() {
+  restarting ??= openCamera(els.live)
+    .then((opened) => {
+      stream = opened;
+      watchTrack(opened);
+      layoutLive();
+    })
+    .catch((err) => dispatch({ type: 'fatal', kind: 'camera', message: err.message }))
+    .finally(() => {
+      restarting = null;
+    });
+  return restarting;
+}
+
+// The OS can end the camera track while the app is open (a call, another app taking the camera):
+// reopen it straight away when live; when frozen, resume() reopens it.
+function watchTrack(watched) {
+  for (const track of watched.getVideoTracks()) {
+    track.addEventListener('ended', () => {
+      if (stream === watched && state.screen === 'live' && document.visibilityState === 'visible') restartCamera();
+    });
   }
 }
 
@@ -292,7 +311,16 @@ bindGestures(els.stage, {
 });
 
 els.live.addEventListener('loadedmetadata', layoutLive);
-addEventListener('resize', () => (frozen ? setFrozenView(frozen.view) : layoutLive()));
+els.live.addEventListener('resize', layoutLive); // camera frames change shape when the phone rotates
+addEventListener('resize', () => {
+  const previous = viewport;
+  viewport = { width: innerWidth, height: innerHeight };
+  if (!frozen) layoutLive();
+  else {
+    const { width, height } = frozen.region;
+    setFrozenView(resizeView(frozen.view, width, height, previous.width, previous.height, viewport.width, viewport.height));
+  }
+});
 document.addEventListener('visibilitychange', () => {
   // A frozen scan survives backgrounding; the camera is re-acquired when the user resumes.
   if (document.visibilityState !== 'visible' || source !== els.live || state.screen !== 'live') return;
