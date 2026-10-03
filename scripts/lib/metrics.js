@@ -1,9 +1,13 @@
 const CJK = /[一-鿿]/;
 
-export function levenshtein(a, b) {
-  const s = [...a];
-  const t = [...b];
-  let prev = Array.from({ length: t.length + 1 }, (_, j) => j);
+export const cjkOnly = (text) => [...text].filter((c) => CJK.test(c)).join('');
+
+// Edits needed to turn `label` into the best-matching stretch of `text` (semi-global edit
+// distance: text before and after the stretch is free). 0 means the label appears verbatim.
+export function substringDistance(label, text) {
+  const s = [...label];
+  const t = [...text];
+  let prev = new Array(t.length + 1).fill(0);
   for (let i = 1; i <= s.length; i++) {
     const cur = [i];
     for (let j = 1; j <= t.length; j++) {
@@ -11,23 +15,23 @@ export function levenshtein(a, b) {
     }
     prev = cur;
   }
-  return prev[t.length];
+  return Math.min(...prev);
 }
 
-export const cjkOnly = (text) => [...text].filter((c) => CJK.test(c)).join('');
-
-// Scores OCR output against labels that must be read. Each label is matched to the line
-// whose CJK characters have the lowest character error rate (CER) against it; unmatched
-// labels score CER 1. Extra lines are not penalised.
+// Scores OCR output against labels that must be read. A label counts as read when it appears
+// verbatim inside the CJK characters of some line (one line may hold several dishes). Otherwise
+// its CER is the best line's edit distance over the label length, capped at 1. Extra lines are
+// not penalised.
 export function scoreRequired(required, lines) {
   const candidates = lines.map((l) => cjkOnly(l.text)).filter(Boolean);
   const results = required.map((label) => {
-    let best = { cer: 1, text: '' };
+    const length = [...label].length;
+    let best = { distance: length, text: '' };
     for (const text of candidates) {
-      const cer = levenshtein(label, text) / [...label].length;
-      if (cer < best.cer) best = { cer, text };
+      const distance = substringDistance(label, text);
+      if (distance < best.distance) best = { distance, text };
     }
-    return { label, text: best.text, cer: best.cer, exact: best.text === label };
+    return { label, text: best.text, distance: best.distance, cer: best.distance / length, exact: best.distance === 0 };
   });
   return {
     results,

@@ -29,5 +29,122 @@
       "特制生面": "tè zhì shēng miàn",
       "海鲜生面": "hǎi xiān shēng miàn"
     }
+  },
+  "menu-zichar-red.png": {
+    "description": "Zi char restaurant menu: dish names in white on red bands over photos, English under each (user photo, 2026-10-03).",
+    "required": [
+      "五福临门",
+      "桂花翅",
+      "兰花鲍鱼粒",
+      "包罗万有",
+      "烧猪",
+      "泰式炸鳕鱼",
+      "金银蒜蒸鳕鱼",
+      "砂煲药材虾",
+      "砂煲印尼虾",
+      "龙虎会",
+      "虾枣",
+      "肉松沙律油条",
+      "南乳炸肉",
+      "三皇蒸乌打",
+      "砂煲凤爪",
+      "香草排骨",
+      "扣肉包",
+      "砂煲猪尾",
+      "鸡精田鸡",
+      "家乡肉碎豆腐"
+    ]
+  },
+  "menu-wangli-kopitiam.png": {
+    "description": "Kopitiam menu board (旺利茶室): white text on dark green, slash-separated noodle variants, prices (user photo, 2026-10-03).",
+    "required": [
+      "旺利茶室",
+      "卤肉饭",
+      "面类",
+      "小吃",
+      "辣椒板面",
+      "面粉粿",
+      "板面干",
+      "幼面干",
+      "面粉粿干",
+      "板面汤",
+      "幼面汤",
+      "面粉粿汤",
+      "经济米粉",
+      "有煎蛋",
+      "午餐肉",
+      "阿嬷自制咖椰土司套餐",
+      "咖椰土司单点",
+      "半生熟蛋",
+      "阿嬷炸鸡翅膀"
+    ]
+  },
+  "menu-addons-cream.png": {
+    "description": "Noodle stall add-ons card: red serif text on cream, Chinese after English item names (user photo, 2026-10-03).",
+    "required": [
+      "加面",
+      "鸡蛋",
+      "手工鱼饺",
+      "手工肉圆",
+      "福州鱼圆",
+      "鱼鳔",
+      "猪肉碎",
+      "猪肉片",
+      "猪肝",
+      "炸扁鱼",
+      "手工鱼饼拼盘"
+    ]
+  },
+  "menu-fish-prawn.png": {
+    "description": "Fish and prawn menu: handwriting-style Chinese under English names, handwritten price stickers (user photo, 2026-10-03).",
+    "required": [
+      "咖喱鱼头",
+      "鱼头炉",
+      "亚叁鱼头",
+      "黑豆豉苦瓜鱼头",
+      "砂锅鱼头",
+      "甘香鱼头",
+      "酸甜炸金目鲈",
+      "港式炸金目鲈",
+      "亚叁炸金目鲈",
+      "印尼炸金目鲈",
+      "泰式炸金目鲈",
+      "麦片虾",
+      "姜葱鱼片",
+      "酸甜鱼片",
+      "亚叁鱼片",
+      "宫保鱼片",
+      "咸蛋鱼片",
+      "芝士奶油虾",
+      "砂锅印尼虾",
+      "咸蛋虾",
+      "酸甜虾",
+      "叁巴虾",
+      "黑胡椒虾",
+      "沙拉虾"
+    ]
+  },
+  "menu-chicken-ribs-black.png": {
+    "description": "Chicken and pork ribs menu: gold Chinese on black, English small caps under each (user photo, 2026-10-03).",
+    "required": [
+      "虾酱鸡",
+      "香江美腿",
+      "妈蜜鸡柳",
+      "宫保鸡柳",
+      "麦片鸡柳",
+      "咸蛋鸡柳",
+      "花雕姜茸甘榜鸡",
+      "姜丝麻油甘榜鸡",
+      "豉汁苦瓜甘榜鸡",
+      "沙姜甘榜鸡",
+      "咕噜肉",
+      "排骨王",
+      "咸蛋排骨",
+      "妈蜜排骨",
+      "蒙古排骨",
+      "金瓜奶黄排骨",
+      "白胡椒猪手",
+      "铁板黑椒鹿肉"
+    ]
   }
 }

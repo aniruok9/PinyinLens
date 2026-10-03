@@ -1,6 +1,7 @@
 // Benchmarks every detector x recognizer x detection size on the labelled fixtures.
-// Usage: node scripts/bench.js [--det=v4,v6-tiny] [--rec=v5] [--long=960,1280] [--runs=3] [--json=out.json]
-// Timings are from this machine's single-threaded WASM: compare rows, don't read them as phone numbers.
+// Usage: node scripts/bench.js [--det=v4,v6-tiny] [--rec=v5] [--long=960,1280] [--runs=1] [--json=out.json]
+// Timings are milliseconds per menu (mean over fixtures of each fixture's median scan) from this
+// machine's single-threaded WASM: compare rows, don't read them as phone numbers.
 import { readFileSync, writeFileSync } from 'node:fs';
 import { createOcr } from '../src/ocr/pipeline.js';
 import { chooseConfig } from './lib/choose.js';
@@ -14,13 +15,14 @@ const args = Object.fromEntries(process.argv.slice(2).map((a) => a.replace(/^--/
 const list = (value, all) => (value ? value.split(',') : all);
 const dets = list(args.det, Object.keys(DET_MODELS));
 const recs = list(args.rec, Object.keys(REC_MODELS));
-const longSides = list(args.long, ['960', '1280']).map(Number);
-const runs = Number(args.runs ?? 3);
+const longSides = list(args.long, ['960']).map(Number);
+const runs = Number(args.runs ?? 1);
 
 const FIXTURES = new URL('../test/fixtures/', import.meta.url);
 const labels = JSON.parse(readFileSync(new URL('labels.json', FIXTURES), 'utf8'));
 const fixtures = Object.entries(labels).map(([name, l]) => ({ name, image: loadPng(new URL(name, FIXTURES)), required: l.required }));
 const median = (xs) => [...xs].sort((a, b) => a - b)[Math.floor(xs.length / 2)];
+const mean = (xs) => xs.reduce((sum, x) => sum + x, 0) / xs.length;
 const mb = (bytes) => bytes / 1e6;
 
 const rows = [];
@@ -37,10 +39,12 @@ for (const det of dets) {
       const misses = [];
       for (const f of fixtures) {
         let result;
+        const fixtureTimes = { det: [], rec: [], total: [] };
         for (let i = 0; i < runs; i++) {
           result = await ocr.scan(f.image, { longSide });
-          for (const k of Object.keys(times)) times[k].push(result.timings[k]);
+          for (const k of Object.keys(fixtureTimes)) fixtureTimes[k].push(result.timings[k]);
         }
+        for (const k of Object.keys(times)) times[k].push(median(fixtureTimes[k]));
         const score = scoreRequired(f.required, result.lines);
         exact += score.exact;
         required += f.required.length;
@@ -55,9 +59,9 @@ for (const det of dets) {
         exact,
         required,
         meanCer: cerSum / required,
-        detMs: median(times.det),
-        recMs: median(times.rec),
-        totalMs: median(times.total),
+        detMs: mean(times.det),
+        recMs: mean(times.rec),
+        totalMs: mean(times.total),
         misses,
       });
       console.error(`measured ${det} + ${rec} @ ${longSide}`);
@@ -66,7 +70,7 @@ for (const det of dets) {
   }
 }
 
-console.log('| det | rec | long side | models MB | exact | mean CER | det ms | rec ms | total ms | misses |');
+console.log('| det | rec | long side | models MB | exact | mean CER | det ms/menu | rec ms/menu | total ms/menu | misses |');
 console.log('|---|---|---|---|---|---|---|---|---|---|');
 for (const r of rows) {
   console.log(
@@ -78,6 +82,6 @@ const choice = chooseConfig(rows);
 console.log(
   choice
     ? `\nSelection rule picks: det=${choice.det} rec=${choice.rec} longSide=${choice.longSide}`
-    : '\nNo configuration read every required label exactly.',
+    : '\nNo configuration read 90% of the labelled phrases exactly.',
 );
 if (args.json) writeFileSync(args.json, JSON.stringify({ rows, choice }, null, 2));

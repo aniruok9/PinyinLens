@@ -74,5 +74,9 @@ export const REC_MODELS = {
   },
 };
 
-// The configuration the app ships: picked by scripts/bench.js (docs/benchmarks/2026-10-02-ocr-models.md).
-export const DEFAULT_CONFIG = { det: 'v5', rec: 'v5', longSide: 960 };
+// The configuration the app ships by default: picked by scripts/bench.js on all labelled
+// fixtures (docs/benchmarks/2026-10-03-ocr-models.md).
+export const DEFAULT_CONFIG = { det: 'v6-tiny', rec: 'v6-tiny', longSide: 960 };
+
+// Models deployed with the app (the default plus what `?det=&rec=` may switch to on a device).
+export const SHIPPED = { det: ['v6-tiny', 'v6-small'], rec: ['v6-tiny', 'v6-small'] };
