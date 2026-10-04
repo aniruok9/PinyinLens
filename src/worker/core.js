@@ -1,3 +1,5 @@
+import { withReplies } from './replies.js';
+
 // The OCR worker's message handler, kept apart from `self` so Node tests can drive it.
 //   { type: 'init', id, wasm, det, rec, charset, detParams, longSide } → { type: 'ready', id, ms }
 //   { type: 'scan', id, width, height, data }                           → { type: 'result', id, lines, timings }
@@ -31,11 +33,5 @@ export function createWorkerCore({ ort, createOcr, annotate }) {
     throw new Error(`Unknown message type: ${message.type}`);
   }
 
-  return async (message) => {
-    try {
-      return { id: message.id, ...(await handle(message)) };
-    } catch (err) {
-      return { type: 'error', id: message.id, message: err.message };
-    }
-  };
+  return withReplies(handle);
 }
