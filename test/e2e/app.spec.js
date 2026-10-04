@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { MENU, body, freeze, lastScan, overlayInk, serveMenu, startWhenReady } from './helpers.js';
+import { CROWDED_MENU, MENU, body, freeze, lastScan, overlayInk, serveMenu, startWhenReady } from './helpers.js';
 
 test.beforeEach(({ context }) => serveMenu(context));
 
@@ -16,6 +16,18 @@ test('scans a still image and draws pinyin under the dishes', async ({ page }) =
   await page.getByRole('button', { name: 'Back to camera' }).click();
   await expect(body(page)).toHaveAttribute('data-state', 'live');
   await expect.poll(() => overlayInk(page)).toBe(0);
+});
+
+test('on a crowded menu, labels move, shrink or are outlined instead of covering other lines', async ({ page }) => {
+  await startWhenReady(page, `./?img=${CROWDED_MENU}`);
+  await freeze(page);
+  const { placements } = await lastScan(page);
+  expect(placements.some((p) => p.halo)).toBe(true);
+  expect(placements.some((p) => !p.halo && (p.side === 'before' || p.scale < 1))).toBe(true);
+  await expect.poll(() => overlayInk(page)).toBeGreaterThan(1000);
+  // What was drawn follows the placements.
+  const drawn = await page.evaluate(() => window.__pinyinlens.labels);
+  expect(drawn.some((label) => label.halo)).toBe(true);
 });
 
 test('zooming in scans only the visible region', async ({ page }) => {

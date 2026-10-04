@@ -238,7 +238,7 @@ Also compared:
 ### 7.2 Overlay (`overlay.js`)
 - A screen-space canvas at `devicePixelRatio`, redrawn whenever the view transform changes. Redraws are throttled to one per animation frame during gestures. There's no constant redraw loop.
 - Per CJK character: font size = 45% of the character's quad height on screen, shrunk to fit 90% of its width. No min/max caps.
-- Pinyin is drawn on a semi-transparent dark strip: below the character for horizontal lines, to the right for vertical lines.
+- Pinyin is drawn on a semi-transparent dark strip: below the character for horizontal lines, to the right for vertical lines. *(Revised 2026-10-04, after Plan 3: on tightly spaced menus the strips covered the next line's characters.)* Where each line's labels go is decided once per scan, in image pixels, so labels hold still while zooming (gap and padding are fractions of the font size): below (right) if the strips cover no other line's Chinese characters and no labels already placed; else above (left); else shrunk to fit either side, down to half size; else below at full size, outlined with no strip, so the characters underneath stay readable. Lines are placed top to bottom, so a gap holds one line's labels, and a line's labels share one placement. English-only lines are not known to the overlay (OCR keeps only lines with Chinese), so labels may still cover them.
 - Highlight: the tapped word's character quads are outlined.
 
 ### 7.3 Gestures (`viewer.js`, Pointer Events)

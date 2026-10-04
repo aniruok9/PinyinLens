@@ -1,15 +1,18 @@
 import { readFileSync } from 'node:fs';
 import { expect } from '@playwright/test';
 
-// The KKM menu photo, served outside the app for ?img= runs.
+// Menu photos served outside the app for ?img= runs: the KKM menu, and one with tightly spaced lines.
 export const MENU = '/e2e/menu-kkm.png';
-const menuBytes = readFileSync(new URL('../fixtures/menu-kkm.png', import.meta.url));
+export const CROWDED_MENU = '/e2e/menu-chicken-ribs-black.png';
+const photos = new Map(
+  [MENU, CROWDED_MENU].map((path) => [path, readFileSync(new URL(`../fixtures/${path.split('/').pop()}`, import.meta.url))]),
+);
 
 // context.route (not page.route) also sees requests that pass through the service worker.
 export const serveMenu = (context) =>
   context.route(
-    (url) => url.pathname === MENU,
-    (route) => route.fulfill({ body: menuBytes, contentType: 'image/png' }),
+    (url) => photos.has(url.pathname),
+    (route) => route.fulfill({ body: photos.get(new URL(route.request().url()).pathname), contentType: 'image/png' }),
   );
 
 export const body = (page) => page.locator('body');

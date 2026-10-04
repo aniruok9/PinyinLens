@@ -4,7 +4,7 @@ import { createDictionaryClient } from './dictionary.js';
 import { createEngine } from './engine.js';
 import { bindGestures } from './gestures.js';
 import { charAt } from './hittest.js';
-import { drawHighlight, drawLabels, labelFont, layoutLabels } from './overlay.js';
+import { drawHighlight, drawLabels, labelFont, layoutLabels, placeLabels } from './overlay.js';
 import { chooseModels, readParams } from './params.js';
 import { initialState, reduce } from './state.js';
 import { render, renderDebug } from './ui.js';
@@ -82,7 +82,7 @@ let stream = null;
 let restarting = null; // the camera re-open in flight, so overlapping triggers open it once
 let viewport = { width: innerWidth, height: innerHeight };
 let liveZoom = 1;
-let frozen = null; // { region, view, lines } while scanning or frozen
+let frozen = null; // { region, view, lines, placements } while scanning or frozen
 let selection = null; // the word on the card: { line, token, start, end } in frozen.lines
 let lookupSeq = 0; // bumped by every tap and close, so a late dictionary reply can't reopen the card
 let noticeTimer = 0;
@@ -256,7 +256,7 @@ async function freeze() {
   const region = visibleRegion(view, size.width, size.height, innerWidth, innerHeight);
   const image = captureRegion(source, region, els.snapshot);
   if (source === els.live) els.live.pause();
-  frozen = { region, view: null, lines: [] };
+  frozen = { region, view: null, lines: [], placements: [] };
   setFrozenView({ scale: 0, tx: 0, ty: 0 }); // clamps to fit: looks exactly like the live view did
   els.snapshot.hidden = false;
   source.hidden = true;
@@ -264,9 +264,10 @@ async function freeze() {
   try {
     const { lines, timings } = await engine.scan(image);
     frozen.lines = lines;
+    frozen.placements = placeLabels(lines, measure); // once per scan: labels then hold still while zooming
     debug.timings = timings;
     debug.region = region;
-    testHook.lastScan = { lines, timings, region };
+    testHook.lastScan = { lines, timings, region, placements: frozen.placements };
     dispatch({ type: 'scan-done', lineCount: lines.length });
     queueOverlay();
   } catch (err) {
@@ -303,6 +304,13 @@ function queueOverlay() {
   });
 }
 
+// Label text width, measured with the overlay's own canvas.
+const overlayContext = els.overlay.getContext('2d');
+function measure(text, size) {
+  overlayContext.font = labelFont(size);
+  return overlayContext.measureText(text).width;
+}
+
 function drawOverlay() {
   const dpr = devicePixelRatio || 1;
   const canvas = els.overlay;
@@ -311,11 +319,9 @@ function drawOverlay() {
   if (!frozen?.lines.length || !state.pinyinVisible) return;
   const ctx = canvas.getContext('2d');
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-  const measure = (text, size) => {
-    ctx.font = labelFont(size);
-    return ctx.measureText(text).width;
-  };
-  drawLabels(ctx, layoutLabels(frozen.lines, frozen.view, measure));
+  const labels = layoutLabels(frozen.lines, frozen.view, measure, frozen.placements);
+  testHook.labels = labels;
+  drawLabels(ctx, labels);
   if (selection) {
     const { line, token, start, end } = selection;
     const chars = frozen.lines[line].tokens[token].chars.slice(start, end);
