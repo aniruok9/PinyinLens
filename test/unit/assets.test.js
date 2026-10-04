@@ -108,6 +108,21 @@ describe('createAssetLoader', () => {
     expect([...caches.stores.keys()]).toEqual(['unrelated']);
   });
 
+  it("reuses an older manifest's verified copy of an unchanged file instead of downloading it", async () => {
+    // After a deploy changes the manifest version, the first launch may be offline: unchanged models
+    // must still load. A file whose bytes changed (b.bin) is downloaded, never taken stale.
+    const caches = fakeCaches();
+    await loader(fakeFetch(files).fetchFn, caches).load({ version: 'v1' }, entries);
+    const updated = [entry('a.bin', 'alpha'), entry('b.bin', 'bravo2')];
+    const { fetchFn, calls } = fakeFetch({ 'b.bin': 'bravo2' }); // a.bin can't be downloaded
+    const out = await loader(fetchFn, caches).load({ version: 'v2' }, updated);
+    expect(text(out.get('a.bin'))).toBe('alpha');
+    expect(text(out.get('b.bin'))).toBe('bravo2');
+    expect(calls).toEqual(['b.bin']);
+    expect([...caches.stores.keys()]).toEqual(['pinyinlens-assets-v2']);
+    expect([...caches.stores.get('pinyinlens-assets-v2').keys()]).toEqual([BASE + 'a.bin', BASE + 'b.bin']);
+  });
+
   it('revalidates downloads with the server instead of trusting the browser HTTP cache', async () => {
     // After a deploy changes a file under the same name, a stale HTTP-cached copy would fail the
     // checksum on every retry, and "Reset app data" can't clear the HTTP cache.

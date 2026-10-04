@@ -112,7 +112,7 @@ For each asset:
 2. Fetch with a streaming reader, counting bytes against the manifest size for the progress bar. Verify SHA-256, then `cache.put`. Retry 3× with backoff, then show a Retry button. Files already completed are kept, so interrupted first loads resume at file granularity.
 3. Hand the bytes to the worker as transferred ArrayBuffers. ORT gets `env.wasm.wasmBinary` and `InferenceSession.create(bytes)`, so it never fetches anything itself.
 
-Old `assets-*` caches are deleted after a new manifest loads successfully.
+Old `assets-*` caches are deleted after a new manifest loads successfully. Before that, a file missing from the new cache is taken from an old one if its SHA-256 matches (revised after Plan 3's review), so a deploy that changes one asset doesn't re-download the others, and the first launch after an update works offline.
 
 **Asset sourcing:**
 - `scripts/fetch-assets.js` (part of `npm run build`, after `npm run fetch-models` has downloaded and verified the pinned models) copies the shipped models and the ORT wasm into `public/ocr/` and writes `public/ocr/manifest.json` (`file`, `size`, `sha256` per asset, detector params, default config). Assets are served same-origin from GitHub Pages and kept out of git.

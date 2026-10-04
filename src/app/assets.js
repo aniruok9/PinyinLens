@@ -1,6 +1,7 @@
 // Loads the OCR assets listed in ocr/manifest.json. Each file comes from the Cache API when the
-// cached copy's SHA-256 matches the manifest, otherwise from the network (byte progress, retries
-// with backoff), and is verified before it is cached. Dependencies are injected for Node tests.
+// cached copy's SHA-256 matches the manifest (this manifest's cache, or an older one's: a deploy
+// that changes one file must not re-download the rest), otherwise from the network (byte progress,
+// retries with backoff), and is verified before it is cached. Dependencies are injected for Node tests.
 
 const CACHE_PREFIX = 'pinyinlens-assets-';
 
@@ -29,6 +30,18 @@ export function createAssetLoader({
     const buffer = await hit.arrayBuffer();
     if (buffer.byteLength === entry.size && (await sha256(buffer)) === entry.sha256) return buffer;
     await cache.delete(urlOf(entry.file)); // corrupt or stale: drop it and download again
+    return null;
+  }
+
+  // A verified copy of the file left in another manifest's cache, or null.
+  async function readOlder(manifest, entry) {
+    for (const name of await cacheStorage.keys()) {
+      if (!name.startsWith(CACHE_PREFIX) || name === CACHE_PREFIX + manifest.version) continue;
+      const hit = await (await cacheStorage.open(name)).match(urlOf(entry.file));
+      if (!hit) continue;
+      const buffer = await hit.arrayBuffer();
+      if (buffer.byteLength === entry.size && (await sha256(buffer)) === entry.sha256) return buffer;
+    }
     return null;
   }
 
@@ -80,10 +93,12 @@ export function createAssetLoader({
     for (const entry of entries) {
       let buffer = await readCached(cache, entry);
       if (!buffer) {
-        buffer = await download(entry, (bytes) => {
-          loaded.set(entry.file, bytes);
-          report();
-        });
+        buffer =
+          (await readOlder(manifest, entry)) ??
+          (await download(entry, (bytes) => {
+            loaded.set(entry.file, bytes);
+            report();
+          }));
         // The Response copies the bytes. Caching is best effort: without it (storage full, restricted
         // private mode) this visit still works and the next one downloads again.
         await cache.put(urlOf(entry.file), new Response(buffer)).catch(() => {});
