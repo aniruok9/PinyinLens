@@ -70,6 +70,18 @@ describe('compactDictionary', () => {
     expect(compactDictionary(text)).toBe(['饭\tfàn\tcooked rice/meal', '鱼\tyú\tfish', ''].join('\n'));
   });
 
+  it('keeps an entry whose meanings another entry has only beyond the three shown', () => {
+    const text = [
+      '才 才 [cai2] /ability; talent/sb of a certain type/a capable individual/then and only then/just now/',
+      '纔 才 [cai2] /(variant of 才[cai2]) just now/',
+    ].join('\n');
+    expect(compactDictionary(text).split('\n')).toEqual([
+      '才\tcái\tability; talent/sb of a certain type/a capable individual',
+      '才\tcái\tjust now',
+      '',
+    ]);
+  });
+
   it('drops an entry whose meanings all appear in another entry for the same word and reading', () => {
     const text = [
       '荳 豆 [dou4] /legume; pulse; bean; pea (CL:顆|颗[ke1],粒[li4]) (variant of 豆[dou4])/',

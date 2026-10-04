@@ -71,8 +71,9 @@ function cleanGloss(gloss) {
 
 // The whole CC-CEDICT text → compact TSV: "simplified\tpinyin\tgloss/gloss/gloss" per line,
 // keeping at most `maxGlosses` meaningful glosses. References to other words read "书经 (Shū jīng)";
-// measure words, variant notes, entries left with nothing, and entries whose glosses all appear in
-// another entry for the same word and reading (traditional variants of one word) are dropped.
+// measure words, variant notes, entries left with nothing, and entries whose shown glosses all
+// appear among another entry's shown glosses for the same word and reading (traditional variants
+// of one word) are dropped.
 export function compactDictionary(text, { maxGlosses = 3 } = {}) {
   const groups = new Map(); // "simplified\tpinyin" → [glosses, ...] in file order
   for (const line of text.split('\n')) {
@@ -86,11 +87,12 @@ export function compactDictionary(text, { maxGlosses = 3 } = {}) {
   }
   const out = [];
   for (const [key, entries] of groups) {
-    entries.forEach((glosses, i) => {
-      const covered = entries.some(
+    const shown = entries.map((glosses) => glosses.slice(0, maxGlosses));
+    shown.forEach((glosses, i) => {
+      const covered = shown.some(
         (other, j) => j !== i && glosses.every((g) => other.includes(g)) && (other.length > glosses.length || j < i),
       );
-      if (!covered) out.push(`${key}\t${glosses.slice(0, maxGlosses).join('/')}`);
+      if (!covered) out.push(`${key}\t${glosses.join('/')}`);
     });
   }
   return `${out.join('\n')}\n`;
