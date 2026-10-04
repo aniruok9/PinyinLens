@@ -30,15 +30,17 @@ export function createDictionary(tsv) {
   }
 
   // The word containing chars[index] of a CJK run, with its dictionary entries. `readings` are the
-  // overlay's per-character pinyin for the run; entries matching the word's reading come first.
+  // overlay's per-character pinyin for the run. Entries whose reading matches it exactly come first,
+  // then ones matching but for capitals, then the rest: pinyin-pro writes lowercase and CC-CEDICT
+  // capitalises proper nouns (listed first), so 鱼 shows "fish" before "surname Yu".
   function lookup(run, index, readings = []) {
     const [start, end] = segment(run).find(([s, e]) => index >= s && index < e);
     const word = [...run].slice(start, end).join('');
-    const normalise = (pinyin) => pinyin.toLowerCase().replace(/\s+/g, '');
-    const reading = normalise(readings.slice(start, end).join(''));
-    const found = words.get(word) ?? [];
-    const preferred = found.filter((e) => normalise(e.pinyin) === reading);
-    return { word, start, end, entries: [...preferred, ...found.filter((e) => !preferred.includes(e))] };
+    const plain = (pinyin) => pinyin.replace(/\s+/g, '');
+    const reading = plain(readings.slice(start, end).join(''));
+    const rank = ({ pinyin }) => (plain(pinyin) === reading ? 0 : plain(pinyin).toLowerCase() === reading.toLowerCase() ? 1 : 2);
+    const entries = [...(words.get(word) ?? [])].sort((a, b) => rank(a) - rank(b)); // stable: file order within a rank
+    return { word, start, end, entries };
   }
 
   return { size: words.size, segment, lookup };

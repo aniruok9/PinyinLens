@@ -33,6 +33,11 @@ describe('dictionary worker core on the real CC-CEDICT', () => {
     expect((await lookup('面粉粿', 2, ['miàn', 'fěn', 'guǒ'])).entries[0].glosses[0]).toMatch(/^rice cake/);
   });
 
+  it('puts the everyday meaning of a common menu character before its surname sense', async () => {
+    expect((await lookup('鱼', 0, ['yú'])).entries[0].glosses[0]).toMatch(/^fish\b/);
+    expect((await lookup('黄', 0, ['huáng'])).entries[0].glosses[0]).toBe('yellow');
+  });
+
   it('includes the noodles sense of 面', async () => {
     const { entries } = await lookup('海鲜伊面', 3, ['hǎi', 'xiān', 'yī', 'miàn']);
     expect(entries.length).toBeGreaterThan(0); // 伊面 is one word

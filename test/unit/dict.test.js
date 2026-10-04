@@ -10,6 +10,8 @@ const TSV = [
   '行\txíng\tto walk; to go',
   '银行\tyín háng\tbank',
   '口\tkǒu\tmouth',
+  '鱼\tYú\tsurname Yu',
+  '鱼\tyú\tfish',
   '',
 ].join('\n');
 
@@ -17,7 +19,7 @@ describe('createDictionary', () => {
   const dict = createDictionary(TSV);
 
   it('counts distinct words', () => {
-    expect(dict.size).toBe(6);
+    expect(dict.size).toBe(7);
   });
 
   it('segments a run into the longest dictionary words (forward maximum matching)', () => {
@@ -44,6 +46,10 @@ describe('createDictionary', () => {
   it("lists the overlay's reading first when a character has several", () => {
     expect(dict.lookup('行', 0, ['xíng']).entries.map((e) => e.pinyin)).toEqual(['xíng', 'háng']);
     expect(dict.lookup('银行', 1, ['yín', 'háng']).entries[0].glosses).toEqual(['bank']);
+  });
+
+  it('ranks a proper noun (capitalised reading) below the common word with the same sounds', () => {
+    expect(dict.lookup('鱼', 0, ['yú']).entries.map((e) => e.glosses[0])).toEqual(['fish', 'surname Yu']);
   });
 
   it('treats characters missing from the dictionary as one-character words with no entries', () => {
