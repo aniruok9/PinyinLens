@@ -4,7 +4,21 @@
 //   progress: 0..1 of the first-run asset download
 //   error: { kind: 'unsupported' | 'camera' | 'engine', message } when screen is 'error'
 //   notice: a short message for the toast, or null
-export const initialState = { screen: 'intro', engine: 'loading', progress: 0, error: null, notice: null };
+//   pinyinVisible: the overlay's show/hide toggle (kept across scans)
+//   card: the word card on a frozen scan: { word, reading, entries (null while looking up), error }, or null
+//   about: whether the About sheet is open
+//   dict: 'loading' | 'ready' | 'failed' — the background CC-CEDICT load
+export const initialState = {
+  screen: 'intro',
+  engine: 'loading',
+  progress: 0,
+  error: null,
+  notice: null,
+  pinyinVisible: true,
+  card: null,
+  about: false,
+  dict: 'loading',
+};
 
 export function reduce(state, event) {
   switch (event.type) {
@@ -29,7 +43,21 @@ export function reduce(state, event) {
     case 'scan-failed':
       return state.screen === 'scanning' ? { ...state, screen: 'live', notice: 'Scan failed. Try again.' } : state;
     case 'resume':
-      return state.screen === 'frozen' ? { ...state, screen: 'live', notice: null } : state;
+      return state.screen === 'frozen' ? { ...state, screen: 'live', notice: null, card: null } : state;
+    case 'show-card':
+      return state.screen === 'frozen' ? { ...state, card: event.card } : state;
+    case 'close-card':
+      return { ...state, card: null };
+    case 'toggle-pinyin':
+      return { ...state, pinyinVisible: !state.pinyinVisible };
+    case 'open-about':
+      return { ...state, about: true };
+    case 'close-about':
+      return { ...state, about: false };
+    case 'dict-ready':
+      return { ...state, dict: 'ready' };
+    case 'dict-failed':
+      return { ...state, dict: 'failed' };
     case 'notice':
       return { ...state, notice: event.message };
     case 'dismiss-notice':

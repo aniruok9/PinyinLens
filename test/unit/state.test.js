@@ -57,3 +57,38 @@ describe('reduce', () => {
     expect(reduce(noted, { type: 'dismiss-notice' }).notice).toBeNull();
   });
 });
+
+describe('reduce: meaning card, pinyin toggle, About, dictionary', () => {
+  const frozen = run([{ type: 'freeze' }, { type: 'scan-done', lineCount: 1 }], live);
+  const card = { word: '可口', reading: 'kě kǒu', entries: null, error: null };
+
+  it('starts with pinyin shown, no card, About closed, dictionary loading', () => {
+    expect(initialState).toMatchObject({ pinyinVisible: true, card: null, about: false, dict: 'loading' });
+  });
+
+  it('shows the word card only on a frozen scan, and closes it on resume', () => {
+    expect(reduce(live, { type: 'show-card', card }).card).toBeNull();
+    const shown = reduce(frozen, { type: 'show-card', card });
+    expect(shown.card).toEqual(card);
+    expect(reduce(shown, { type: 'close-card' }).card).toBeNull();
+    expect(reduce(shown, { type: 'resume' })).toMatchObject({ screen: 'live', card: null });
+  });
+
+  it('toggles pinyin visibility, and the choice survives resume', () => {
+    const hidden = reduce(frozen, { type: 'toggle-pinyin' });
+    expect(hidden.pinyinVisible).toBe(false);
+    expect(reduce(hidden, { type: 'resume' }).pinyinVisible).toBe(false);
+    expect(reduce(hidden, { type: 'toggle-pinyin' }).pinyinVisible).toBe(true);
+  });
+
+  it('opens and closes the About sheet', () => {
+    const open = reduce(live, { type: 'open-about' });
+    expect(open.about).toBe(true);
+    expect(reduce(open, { type: 'close-about' }).about).toBe(false);
+  });
+
+  it('tracks the dictionary status', () => {
+    expect(reduce(live, { type: 'dict-ready' }).dict).toBe('ready');
+    expect(reduce(live, { type: 'dict-failed' }).dict).toBe('failed');
+  });
+});
