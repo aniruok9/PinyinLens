@@ -23,21 +23,24 @@ const bounds = (quad) => ({
 describe('label placement on crowded menus', () => {
   let ocr;
   const scans = {};
+  const photos = {};
 
   beforeAll(async () => {
     const det = loadDet(DEFAULT_CONFIG.det);
     const rec = loadRec(DEFAULT_CONFIG.rec);
     ocr = await createOcr({ ort, det: det.bytes, rec: rec.bytes, charset: rec.charset, detParams: det.params });
     for (const name of CROWDED) {
-      scans[name] = annotate((await ocr.scan(loadPng(new URL(name, FIXTURES)), { longSide: DEFAULT_CONFIG.longSide })).lines);
+      photos[name] = loadPng(new URL(name, FIXTURES));
+      scans[name] = annotate((await ocr.scan(photos[name], { longSide: DEFAULT_CONFIG.longSide })).lines);
     }
   });
   afterAll(() => ocr?.release());
 
   for (const name of CROWDED) {
-    it(`${name}: every syllable keeps a label, and no label strip covers another line's characters or labels`, () => {
+    it(`${name}: every syllable keeps a label, and no label strip covers another line's characters or labels or leaves the photo`, () => {
       const lines = scans[name];
-      const labels = layoutLabels(lines, { scale: 1, tx: 0, ty: 0 }, measure, placeLabels(lines, measure));
+      const { width, height } = photos[name];
+      const labels = layoutLabels(lines, { scale: 1, tx: 0, ty: 0 }, measure, placeLabels(lines, measure, { width, height }));
       const syllables = lines.flatMap((l) => l.tokens.filter((t) => t.isCJK).flatMap((t) => t.chars.filter((c) => c.pinyin)));
       expect(labels).toHaveLength(syllables.length);
 
@@ -45,14 +48,16 @@ describe('label placement on crowded menus', () => {
       const strips = labels.filter((label) => !label.halo).map((label) => ({ line: label.line, box: labelBox(label) }));
       const covered = strips.filter((s) => chars.some((c) => c.line !== s.line && overlaps(s.box, c.box)));
       const stacked = strips.filter((s) => strips.some((t) => t.line !== s.line && overlaps(s.box, t.box)));
+      const outside = strips.filter((s) => s.box.x0 < 0 || s.box.y0 < 0 || s.box.x1 > width || s.box.y1 > height);
       expect(covered).toEqual([]);
       expect(stacked).toEqual([]);
+      expect(outside).toEqual([]);
     });
   }
 
   it('outlines the labels of lines with no room at all rather than dropping them', () => {
     const lines = scans['menu-chicken-ribs-black.png'];
-    const placements = placeLabels(lines, measure);
+    const placements = placeLabels(lines, measure, photos['menu-chicken-ribs-black.png']);
     expect(placements.some((p) => p.halo)).toBe(true);
     expect(placements.some((p) => !p.halo && (p.side === 'before' || p.scale < 1))).toBe(true);
   });

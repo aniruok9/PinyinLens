@@ -95,6 +95,19 @@ describe('placeLabels', () => {
     for (const label of labels) expect(label.y).toBeLessThan(50);
   });
 
+  it('never places labels off the photo, where they could not be seen', () => {
+    const photo = { width: 400, height: 400 };
+    // A line 3px from the top with another close below: above is off the photo, so it shrinks or outlines.
+    expect(placeLabels([row(0, 3, 'ā'), row(0, 50, 'ā')], measure, photo)[0]).toEqual({ side: 'after', scale: 1, halo: true });
+    // The same for a vertical column at the left edge with another column close on its right.
+    const column = (x) => line(true, [{ pinyin: 'yī', quad: [[x + 40, 10], [x + 40, 50], [x, 50], [x, 10]] }]);
+    expect(placeLabels([column(3), column(50)], measure, photo)[0]).toEqual({ side: 'after', scale: 1, halo: true });
+    // A crowded line 3px from the bottom outlines its labels above itself, the side still on the photo.
+    expect(placeLabels([row(0, 310, 'ā'), row(0, 357, 'ā')], measure, photo)[1]).toEqual({ side: 'before', scale: 1, halo: true });
+    // Without a close neighbour the edge line keeps its labels below, as usual.
+    expect(placeLabels([row(0, 3, 'ā')], measure, photo)[0]).toEqual({ side: 'after', scale: 1, halo: false });
+  });
+
   it('gives each gap between lines to one line\'s labels', () => {
     // The second line's labels take the 35px gap below it. The third line can't put its labels in the
     // same gap and has 2px below it, so it outlines them instead.

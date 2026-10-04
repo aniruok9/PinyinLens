@@ -76,12 +76,14 @@ export function labelBox({ x, y, width, fontSize, align }) {
 }
 
 // Where each line's labels go, one { side, scale, halo } per line, chosen in image px: below the line
-// (right of a vertical one) if the labels cover no other line's Chinese characters and no labels
-// placed earlier, else above (left), else shrunk until they fit on either side, down to MIN_SCALE;
-// failing all that, below at full size, outlined instead of on a strip so that the characters
-// underneath stay readable. Lines are placed top to bottom, so a gap between two lines holds only
-// one line's labels, and all of a line's labels share one placement.
-export function placeLabels(lines, measure) {
+// (right of a vertical one) if the labels stay on the photo (width × height) and cover no other
+// line's Chinese characters and no labels placed earlier, else above (left), else shrunk until they
+// fit on either side, down to MIN_SCALE; failing all that, at full size below (or above, if below is
+// off the photo), outlined instead of on a strip so that the characters underneath stay readable.
+// Lines are placed top to bottom, so a gap between two lines holds only one line's labels, and all
+// of a line's labels share one placement.
+export function placeLabels(lines, measure, { width = Infinity, height = Infinity } = {}) {
+  const onPhoto = (b) => b.x0 >= 0 && b.y0 >= 0 && b.x1 <= width && b.y1 <= height;
   const chars = lines.map((line) => line.tokens.filter((t) => t.isCJK).flatMap((t) => t.chars.map((c) => bounds(c.quad))));
   const tries = [{ side: 'after', scale: 1 }, { side: 'before', scale: 1 }];
   for (let k = 1; 1 - k * SCALE_STEP >= MIN_SCALE - 1e-9; k++) {
@@ -98,14 +100,13 @@ export function placeLabels(lines, measure) {
     const reach = 2.5 * Math.max(0, ...chars[l].map((c) => Math.max(c.x1 - c.x0, c.y1 - c.y0)));
     const zone = { x0: box.x0 - reach, y0: box.y0 - reach, x1: box.x1 + reach, y1: box.y1 + reach };
     const obstacles = [...chars.flatMap((c, other) => (other === l ? [] : c)), ...placed].filter((o) => overlaps(o, zone));
-    const free = (boxes) => boxes.every((b) => !obstacles.some((o) => overlaps(b, o)));
-    let placement = { ...NATURAL, halo: true };
-    for (const attempt of tries) {
-      if (free(lineLabels(line, l, IDENTITY, measure, { ...attempt, halo: false }).map(labelBox))) {
-        placement = { ...attempt, halo: false };
-        break;
-      }
-    }
+    const boxes = (placement) => lineLabels(line, l, IDENTITY, measure, placement).map(labelBox);
+    const free = (placement) => boxes(placement).every((b) => onPhoto(b) && !obstacles.some((o) => overlaps(b, o)));
+    const outlined = ['after', 'before'].map((side) => ({ side, scale: 1, halo: true }));
+    const placement =
+      tries.map((attempt) => ({ ...attempt, halo: false })).find(free) ??
+      outlined.find((p) => boxes(p).every(onPhoto)) ??
+      outlined[0];
     placements[l] = placement;
     placed.push(...lineLabels(line, l, IDENTITY, measure, placement).map(labelBox));
   }

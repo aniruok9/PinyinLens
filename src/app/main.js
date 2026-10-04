@@ -264,7 +264,7 @@ async function freeze() {
   try {
     const { lines, timings } = await engine.scan(image);
     frozen.lines = lines;
-    frozen.placements = placeLabels(lines, measure); // once per scan: labels then hold still while zooming
+    frozen.placements = placeLabels(lines, measure, region); // once per scan: labels then hold still while zooming
     debug.timings = timings;
     debug.region = region;
     testHook.lastScan = { lines, timings, region, placements: frozen.placements };

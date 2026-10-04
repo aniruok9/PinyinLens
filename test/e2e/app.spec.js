@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test';
+import { labelBox } from '../../src/app/overlay.js';
 import { CROWDED_MENU, MENU, body, freeze, lastScan, overlayInk, serveMenu, startWhenReady } from './helpers.js';
 
 test.beforeEach(({ context }) => serveMenu(context));
@@ -25,9 +26,15 @@ test('on a crowded menu, labels move, shrink or are outlined instead of covering
   expect(placements.some((p) => p.halo)).toBe(true);
   expect(placements.some((p) => !p.halo && (p.side === 'before' || p.scale < 1))).toBe(true);
   await expect.poll(() => overlayInk(page)).toBeGreaterThan(1000);
-  // What was drawn follows the placements.
+  // What was drawn follows the placements, and no label strip lies off the photo.
   const drawn = await page.evaluate(() => window.__pinyinlens.labels);
   expect(drawn.some((label) => label.halo)).toBe(true);
+  const photo = await page.locator('#snapshot').boundingBox();
+  const offPhoto = drawn
+    .filter((label) => !label.halo)
+    .map(labelBox)
+    .filter((b) => b.x0 < photo.x - 0.5 || b.y0 < photo.y - 0.5 || b.x1 > photo.x + photo.width + 0.5 || b.y1 > photo.y + photo.height + 0.5);
+  expect(offPhoto).toEqual([]);
 });
 
 test('zooming in scans only the visible region', async ({ page }) => {
