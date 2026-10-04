@@ -44,3 +44,15 @@ export const backgroundAndReturn = (page) =>
       document.dispatchEvent(new Event('visibilitychange'));
     }
   });
+
+// Taps the centre of character `index` of the first Chinese token reading `text` in the last scan,
+// mapping its quad through the frozen snapshot's on-screen box.
+export async function tapChar(page, text, index) {
+  const scan = await lastScan(page);
+  const token = scan.lines.flatMap((l) => l.tokens).find((t) => t.text === text);
+  if (!token) throw new Error(`no token reads ${text}`);
+  const [q0, , q2] = token.chars[index].quad;
+  const box = await page.locator('#snapshot').boundingBox();
+  const scale = box.width / scan.region.width;
+  await page.mouse.click(box.x + ((q0[0] + q2[0]) / 2) * scale, box.y + ((q0[1] + q2[1]) / 2) * scale);
+}

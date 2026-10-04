@@ -55,3 +55,22 @@ export function drawLabels(ctx, labels) {
     ctx.fillText(label.text, label.x, label.y);
   }
 }
+
+// Outlines the tapped word (spec §7.2): one box from its first character's leading edge to its
+// last character's trailing edge, in reading orientation. quads are content px.
+export function drawHighlight(ctx, quads, view) {
+  if (!quads.length) return;
+  const first = quads[0].map((p) => toScreen(view, p));
+  const last = quads[quads.length - 1].map((p) => toScreen(view, p));
+  const outline = [first[0], last[1], last[2], first[3]];
+  ctx.beginPath();
+  outline.forEach(([x, y], i) => (i ? ctx.lineTo(x, y) : ctx.moveTo(x, y)));
+  ctx.closePath();
+  ctx.lineJoin = 'round';
+  ctx.lineWidth = 5;
+  ctx.strokeStyle = 'rgba(0, 0, 0, 0.6)';
+  ctx.stroke();
+  ctx.lineWidth = 2.5;
+  ctx.strokeStyle = '#4fc3f7';
+  ctx.stroke();
+}

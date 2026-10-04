@@ -21,6 +21,7 @@ const RING = 2 * Math.PI * 32; // circumference of the shutter's progress ring (
 export function render(els, state) {
   document.body.dataset.state = state.screen;
   document.body.dataset.engine = state.engine;
+  document.body.dataset.dict = state.dict;
   els.intro.hidden = state.screen !== 'intro';
   els.error.hidden = state.screen !== 'error';
   if (state.error) {
@@ -39,10 +40,50 @@ export function render(els, state) {
   els.progress.style.strokeDashoffset = String(RING * (1 - state.progress));
   els.notice.hidden = !state.notice;
   els.notice.textContent = state.notice ?? '';
+  els.toggle.hidden = state.screen !== 'frozen';
+  els.toggle.setAttribute('aria-label', state.pinyinVisible ? 'Hide pinyin' : 'Show pinyin');
+  els.toggle.toggleAttribute('data-off', !state.pinyinVisible);
+  renderCard(els, state.card, state.dict);
+  if (state.about && !els.about.open) els.about.showModal();
+  else if (!state.about && els.about.open) els.about.close();
 }
 
-// The ?debug panel (spec §8): what to screenshot when something misbehaves on a phone.
-export function renderDebug(element, debug) {
+// The word card (spec §7.4): the tapped word straight away, its dictionary entries when they arrive.
+function renderCard(els, card, dict) {
+  els.card.hidden = !card;
+  if (!card) return;
+  els.cardWord.textContent = card.word;
+  els.cardReading.textContent = card.reading;
+  els.cardStatus.textContent = card.error
+    ? `Dictionary unavailable (${card.error})`
+    : !card.entries
+      ? dict === 'ready'
+        ? ''
+        : 'Dictionary loading…'
+      : card.entries.length
+        ? ''
+        : 'Not in the dictionary.';
+  // An entry's pinyin is shown only when it isn't the reading above (e.g. 行 read xíng, not háng).
+  const plain = (pinyin) => pinyin.toLowerCase().replace(/\s+/g, '');
+  els.cardEntries.replaceChildren(
+    ...(card.entries ?? []).map(({ pinyin, glosses }) => {
+      const item = document.createElement('li');
+      if (plain(pinyin) !== plain(card.reading)) {
+        const reading = document.createElement('span');
+        reading.className = 'pinyin';
+        reading.textContent = pinyin;
+        item.append(reading);
+      }
+      item.append(glosses.join(' / '));
+      return item;
+    }),
+  );
+}
+
+// The debug panel (spec §8; ?debug, or the About sheet's button): what to screenshot when
+// something misbehaves on a phone.
+export function renderDebug(element, toggle, debug) {
+  toggle.textContent = debug.enabled ? 'Hide debug info' : 'Show debug info';
   element.hidden = !debug.enabled;
   if (!debug.enabled) return;
   const ms = (value) => (value == null ? '–' : `${Math.round(value)} ms`);

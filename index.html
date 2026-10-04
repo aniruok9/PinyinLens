@@ -10,7 +10,7 @@
     <link rel="apple-touch-icon" href="icons/icon-192.png" />
     <link rel="stylesheet" href="./src/app/style.css" />
   </head>
-  <body data-state="intro" data-engine="loading">
+  <body data-state="intro" data-engine="loading" data-dict="loading">
     <main id="stage" aria-label="Camera view">
       <video id="live" playsinline muted autoplay hidden></video>
       <img id="still" alt="" hidden />
@@ -30,6 +30,28 @@
         <circle class="icon-busy" cx="36" cy="36" r="12" />
       </svg>
     </button>
+
+    <button id="toggle" type="button" aria-label="Hide pinyin" hidden>
+      <svg viewBox="0 0 24 24" aria-hidden="true">
+        <path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z" />
+        <circle cx="12" cy="12" r="3" />
+        <line class="slash" x1="4" y1="20" x2="20" y2="4" />
+      </svg>
+    </button>
+
+    <button id="about-button" type="button" aria-label="About PinyinLens">i</button>
+
+    <section id="word-card" aria-label="Word meaning" hidden>
+      <div id="card-head">
+        <div>
+          <p id="card-word" lang="zh-Hans"></p>
+          <p id="card-reading"></p>
+        </div>
+        <button id="card-close" type="button" aria-label="Close">×</button>
+      </div>
+      <p id="card-status" role="status"></p>
+      <ul id="card-entries"></ul>
+    </section>
 
     <section id="intro" class="card" aria-labelledby="intro-title">
       <h1 id="intro-title">PinyinLens</h1>
@@ -52,6 +74,27 @@
 
     <div id="notice" role="status" hidden></div>
     <pre id="debug" hidden></pre>
+
+    <dialog id="about" class="card" aria-labelledby="about-title">
+      <h2 id="about-title">About PinyinLens</h2>
+      <p>Reads Chinese text through your camera, entirely on your device: nothing you scan is uploaded.</p>
+      <h3>Credits</h3>
+      <ul>
+        <li>
+          Word meanings: <a href="https://cc-cedict.org/wiki/">CC-CEDICT</a>, snapshot of 2026-10-04 from
+          <a href="https://www.mdbg.net/chinese/dictionary?page=cc-cedict">MDBG</a>, licensed under
+          <a href="https://creativecommons.org/licenses/by-sa/4.0/">CC BY-SA 4.0</a>. Shortened here to the first
+          three meanings of each entry, without its "variant of" and "see" references.
+        </li>
+        <li>
+          Text recognition: <a href="https://github.com/PaddlePaddle/PaddleOCR">PaddleOCR</a> models (Apache 2.0) on
+          <a href="https://onnxruntime.ai/">ONNX Runtime Web</a> (MIT).
+        </li>
+        <li>Pinyin: <a href="https://github.com/zh-lx/pinyin-pro">pinyin-pro</a> (MIT).</li>
+      </ul>
+      <button id="debug-toggle" type="button" class="secondary">Show debug info</button>
+      <button id="about-close" type="button">Close</button>
+    </dialog>
 
     <script type="module" src="./src/app/main.js"></script>
   </body>

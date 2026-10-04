@@ -1,8 +1,10 @@
 import { createAssetLoader } from './assets.js';
 import { captureRegion, openCamera, sourceSize, trackEnded } from './camera.js';
+import { createDictionaryClient } from './dictionary.js';
 import { createEngine } from './engine.js';
 import { bindGestures } from './gestures.js';
-import { drawLabels, labelFont, layoutLabels } from './overlay.js';
+import { charAt } from './hittest.js';
+import { drawHighlight, drawLabels, labelFont, layoutLabels } from './overlay.js';
 import { chooseModels, readParams } from './params.js';
 import { initialState, reduce } from './state.js';
 import { render, renderDebug } from './ui.js';
@@ -15,6 +17,7 @@ const SIMD_PROBE = new Uint8Array([
 const MAX_LIVE_ZOOM = 10;
 const MAX_FROZEN_ZOOM = 8; // × the fit of the scanned region
 const NOTICE_MS = 4000;
+const SWIPE_CLOSE = 40; // px down on the card's head that dismisses it
 const STARTED_KEY = 'pinyinlens.started';
 const HINTED_KEY = 'pinyinlens.homeScreenHint';
 
@@ -36,6 +39,18 @@ const els = {
   reset: byId('reset'),
   notice: byId('notice'),
   debug: byId('debug'),
+  toggle: byId('toggle'),
+  aboutButton: byId('about-button'),
+  about: byId('about'),
+  aboutClose: byId('about-close'),
+  debugToggle: byId('debug-toggle'),
+  card: byId('word-card'),
+  cardHead: byId('card-head'),
+  cardClose: byId('card-close'),
+  cardWord: byId('card-word'),
+  cardReading: byId('card-reading'),
+  cardStatus: byId('card-status'),
+  cardEntries: byId('card-entries'),
 };
 
 const params = readParams(location.search);
@@ -61,12 +76,15 @@ const storage = {
 
 let state = initialState;
 let engine = null;
+let dictionary = null;
 let source = null; // the live <video>, or the <img> under ?img=
 let stream = null;
 let restarting = null; // the camera re-open in flight, so overlapping triggers open it once
 let viewport = { width: innerWidth, height: innerHeight };
 let liveZoom = 1;
 let frozen = null; // { region, view, lines } while scanning or frozen
+let selection = null; // the word on the card: { line, token, start, end } in frozen.lines
+let lookupSeq = 0; // bumped by every tap and close, so a late dictionary reply can't reopen the card
 let noticeTimer = 0;
 let overlayQueued = false;
 
@@ -75,7 +93,7 @@ function dispatch(event) {
   state = reduce(state, event);
   testHook.state = state;
   render(els, state);
-  renderDebug(els.debug, debug);
+  renderDebug(els.debug, els.debugToggle, debug);
   if (state.notice && state.notice !== previous.notice) {
     clearTimeout(noticeTimer);
     noticeTimer = setTimeout(() => dispatch({ type: 'dismiss-notice' }), NOTICE_MS);
@@ -98,6 +116,7 @@ async function startEngine() {
     debug.initMs = (await engine.init()).ms;
     dispatch({ type: 'engine-ready' });
     afterFirstLoad();
+    startDictionary(manifest);
   } catch (err) {
     debug.error = err.message;
     dispatch({ type: 'fatal', kind: 'engine', message: err.message });
@@ -120,6 +139,22 @@ async function loadInit(manifest, { det, rec }) {
     longSide: manifest.default.longSide,
   };
   return { message, transfer: [message.wasm, message.det, message.rec] };
+}
+
+// The dictionary loads after the engine, so it never slows the first scan. A failed load is
+// retried by the next lookup.
+function startDictionary(manifest) {
+  dictionary = createDictionaryClient({
+    spawnWorker: () => new Worker(new URL('../worker/dict.worker.js', import.meta.url), { type: 'module' }),
+    loadBytes: async () => (await loader.load(manifest, [manifest.dict])).get(manifest.dict.file),
+  });
+  dictionary.load().then(
+    () => dispatch({ type: 'dict-ready' }),
+    (err) => {
+      debug.error = `dictionary: ${err.message}`;
+      dispatch({ type: 'dict-failed' });
+    },
+  );
 }
 
 function afterFirstLoad() {
@@ -243,6 +278,8 @@ async function freeze() {
 
 function resume() {
   frozen = null;
+  selection = null;
+  lookupSeq++;
   els.snapshot.hidden = true;
   els.snapshot.width = 0; // releases the snapshot's memory (iOS caps total canvas memory)
   els.snapshot.height = 0;
@@ -271,7 +308,7 @@ function drawOverlay() {
   const canvas = els.overlay;
   canvas.width = Math.round(innerWidth * dpr); // also clears it
   canvas.height = Math.round(innerHeight * dpr);
-  if (!frozen?.lines.length) return;
+  if (!frozen?.lines.length || !state.pinyinVisible) return;
   const ctx = canvas.getContext('2d');
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   const measure = (text, size) => {
@@ -279,6 +316,47 @@ function drawOverlay() {
     return ctx.measureText(text).width;
   };
   drawLabels(ctx, layoutLabels(frozen.lines, frozen.view, measure));
+  if (selection) {
+    const { line, token, start, end } = selection;
+    const chars = frozen.lines[line].tokens[token].chars.slice(start, end);
+    drawHighlight(ctx, chars.map((c) => c.quad), frozen.view);
+  }
+}
+
+// ── Tap for meaning ─────────────────────────────────────────────────────────────────────────
+
+// A tap on the frozen view: the word under it goes on the card; a tap away from the text closes it.
+async function showMeaning(x, y) {
+  const hit = charAt(frozen.lines, frozen.view, x, y);
+  if (!hit) return closeCard();
+  const seq = ++lookupSeq;
+  const { chars } = frozen.lines[hit.line].tokens[hit.token];
+  const readings = chars.map((c) => c.pinyin ?? '');
+  const show = (start, end, entries, error = null) => {
+    selection = { line: hit.line, token: hit.token, start, end };
+    const word = chars.slice(start, end);
+    const reading = readings.slice(start, end).filter(Boolean).join(' ');
+    dispatch({ type: 'show-card', card: { word: word.map((c) => c.ch).join(''), reading, entries, error } });
+    queueOverlay();
+  };
+  show(hit.char, hit.char + 1, null); // the character alone until the dictionary finds its word
+  try {
+    const result = await dictionary.lookup(chars.map((c) => c.ch).join(''), hit.char, readings);
+    if (seq !== lookupSeq) return;
+    if (state.dict !== 'ready') dispatch({ type: 'dict-ready' });
+    show(result.start, result.end, result.entries);
+  } catch (err) {
+    if (seq !== lookupSeq) return;
+    debug.error = `dictionary: ${err.message}`;
+    show(hit.char, hit.char + 1, null, err.message);
+  }
+}
+
+function closeCard() {
+  lookupSeq++;
+  selection = null;
+  if (state.card) dispatch({ type: 'close-card' });
+  queueOverlay();
 }
 
 // ── Wiring ──────────────────────────────────────────────────────────────────────────────────
@@ -290,6 +368,30 @@ els.shutter.addEventListener('click', () => {
     dispatch({ type: 'resume' });
     resume();
   }
+});
+els.toggle.addEventListener('click', () => {
+  dispatch({ type: 'toggle-pinyin' });
+  queueOverlay();
+});
+els.aboutButton.addEventListener('click', () => dispatch({ type: 'open-about' }));
+els.aboutClose.addEventListener('click', () => dispatch({ type: 'close-about' }));
+els.about.addEventListener('close', () => state.about && dispatch({ type: 'close-about' })); // Escape key
+els.debugToggle.addEventListener('click', () => {
+  debug.enabled = !debug.enabled;
+  renderDebug(els.debug, els.debugToggle, debug);
+});
+els.cardClose.addEventListener('click', closeCard);
+let swipeFrom = null;
+els.cardHead.addEventListener('pointerdown', (event) => {
+  swipeFrom = event.clientY;
+});
+// On window: a mouse isn't captured, so its release can land anywhere.
+addEventListener('pointerup', (event) => {
+  if (swipeFrom !== null && event.clientY - swipeFrom > SWIPE_CLOSE) closeCard();
+  swipeFrom = null;
+});
+addEventListener('pointercancel', () => {
+  swipeFrom = null;
 });
 els.retry.addEventListener('click', () => location.reload());
 els.reset.addEventListener('click', async () => {
@@ -314,6 +416,9 @@ bindGestures(els.stage, {
   onDrag(dx, dy) {
     if (frozen) setFrozenView(panBy(frozen.view, dx, dy));
   },
+  onTap(x, y) {
+    if (state.screen === 'frozen') showMeaning(x, y);
+  },
 });
 
 els.live.addEventListener('loadedmetadata', layoutLive);
@@ -335,7 +440,7 @@ document.addEventListener('visibilitychange', () => {
 });
 
 render(els, state);
-renderDebug(els.debug, debug);
+renderDebug(els.debug, els.debugToggle, debug);
 if (!WebAssembly.validate(SIMD_PROBE)) {
   dispatch({ type: 'fatal', kind: 'unsupported', message: '' });
 } else {

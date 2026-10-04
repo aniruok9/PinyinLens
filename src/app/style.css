@@ -206,3 +206,159 @@ body {
   white-space: pre-wrap;
   pointer-events: none;
 }
+
+/* Round icon buttons over the camera view. */
+#toggle,
+#about-button {
+  position: fixed;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.45);
+  color: #fff;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+}
+
+#toggle {
+  right: calc(20px + env(safe-area-inset-right));
+  bottom: calc(36px + env(safe-area-inset-bottom));
+  width: 48px;
+  height: 48px;
+}
+
+#toggle svg {
+  width: 26px;
+  height: 26px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+}
+
+#toggle .slash {
+  display: none;
+}
+
+#toggle[data-off] .slash {
+  display: inline;
+}
+
+#about-button {
+  top: calc(12px + env(safe-area-inset-top));
+  right: calc(12px + env(safe-area-inset-right));
+  width: 36px;
+  height: 36px;
+  font: italic 600 18px/1 Georgia, serif;
+}
+
+/* Word card: a bottom sheet above the shutter, so the controls stay usable while it is open. */
+#word-card {
+  position: fixed;
+  left: 50%;
+  bottom: calc(112px + env(safe-area-inset-bottom));
+  display: flex;
+  flex-direction: column;
+  width: min(calc(100vw - 24px), 480px);
+  max-height: 45vh;
+  border-radius: 16px;
+  background: rgba(18, 22, 28, 0.96);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+  transform: translateX(-50%);
+}
+
+/* The head is the grab handle: swiping down on it dismisses the card. */
+#card-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px 12px 6px 18px;
+  touch-action: none;
+}
+
+#card-word {
+  font-size: 2rem;
+  line-height: 1.2;
+}
+
+#card-reading {
+  color: var(--accent);
+  font-size: 1.05rem;
+}
+
+#card-close {
+  flex: none;
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.1);
+  color: #cfd6e0;
+  font-size: 22px;
+  line-height: 1;
+}
+
+#card-status {
+  padding: 0 18px;
+  color: #9aa4b2;
+}
+
+#card-status:empty {
+  display: none;
+}
+
+#card-entries {
+  overflow: auto;
+  padding: 4px 18px 16px;
+  list-style: none;
+}
+
+#card-entries li {
+  padding: 6px 0;
+  color: #cfd6e0;
+  line-height: 1.4;
+}
+
+#card-entries li + li {
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+#card-entries .pinyin {
+  margin-right: 8px;
+  color: #9aa4b2;
+}
+
+/* About: a modal <dialog>, centred by the browser. */
+dialog.card {
+  inset: 0;
+  height: fit-content;
+  margin: auto;
+  border: 0;
+  color: inherit;
+  transform: none;
+}
+
+dialog.card::backdrop {
+  background: rgba(0, 0, 0, 0.55);
+}
+
+.card h3 {
+  margin: 16px 0 6px;
+  font-size: 1rem;
+}
+
+.card ul {
+  padding-left: 1.2em;
+}
+
+.card li + li {
+  margin-top: 6px;
+}
+
+.card a {
+  color: var(--accent);
+}
