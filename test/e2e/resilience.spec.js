@@ -91,6 +91,16 @@ test('reopens the camera when the system ended it in the background', async ({ p
   await freeze(page);
 });
 
+test('a tap while a reopened camera has no frame yet still freezes and scans', async ({ page }) => {
+  await startWhenReady(page, './');
+  await page.evaluate(async () => {
+    const video = document.getElementById('live');
+    video.srcObject = await navigator.mediaDevices.getUserMedia({ video: true }); // like a reopen: no frame yet
+    document.getElementById('shutter').click();
+  });
+  await expect(body(page)).toHaveAttribute('data-state', 'frozen', { timeout: 30_000 });
+});
+
 test('reopens the camera when its track ends while the app is open', async ({ page }) => {
   await startWhenReady(page, './');
   await page.evaluate(() => {

@@ -208,7 +208,13 @@ function setFrozenView(view) {
 }
 
 async function freeze() {
-  if (state.screen !== 'live' || state.engine !== 'ready') return;
+  const ready = () => state.screen === 'live' && state.engine === 'ready';
+  if (!ready()) return;
+  // A camera that was just (re)opened has no frame for a moment: wait for one rather than drop the tap.
+  if (source === els.live && els.live.readyState < HTMLMediaElement.HAVE_CURRENT_DATA) {
+    await new Promise((resolve) => els.live.addEventListener('loadeddata', resolve, { once: true }));
+    if (!ready()) return; // another tap got there first
+  }
   const { size, view } = currentLiveView();
   if (!size.width) return;
   // Scan only what is on screen: zooming in gives small text the detector's full resolution.
