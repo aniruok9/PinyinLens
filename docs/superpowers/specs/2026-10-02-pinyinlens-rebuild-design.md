@@ -72,10 +72,13 @@ MAIN THREAD (UI only, never blocks)            WORKER (all heavy work)
 |---|---|
 | `init { ortWasm, det, rec, keys }` (ArrayBuffers, transferred) | `ready { warmupMs }` or `error` |
 | `scan { id, width, height, data }` (RGBA buffer, transferred) | `result { id, lines, timings }` or `error { id, message }` |
-| `loadDict { bytes }` | `dictReady` |
-| `lookup { id, lineIndex, charIndex }` | `entries { id, word, span, entries }` |
 
-The worker keeps the last scan's `lines` so that `lookup` can resolve indices. A new `scan` replaces them.
+**Dictionary worker** (a second worker, `src/worker/dict.worker.js`; revised in Plan 3, 2026-10-04). Lookups are stateless: the main thread sends the tapped character's CJK run, so the OCR worker keeps no scan state and a slow dictionary load never delays a scan.
+
+| Main → Worker | Worker → Main |
+|---|---|
+| `load { id, bytes }` (the compact dictionary, transferred) | `ready { id, words }` or `error` |
+| `lookup { id, run, index, readings }` | `result { id, result: { word, start, end, entries } }` or `error { id, message }` |
 
 ### 4.2 Result data model (coordinates in snapshot pixels)
 
@@ -114,7 +117,7 @@ Old `assets-*` caches are deleted after a new manifest loads successfully.
 **Asset sourcing:**
 - `scripts/fetch-assets.js` (part of `npm run build`, after `npm run fetch-models` has downloaded and verified the pinned models) copies the shipped models and the ORT wasm into `public/ocr/` and writes `public/ocr/manifest.json` (`file`, `size`, `sha256` per asset, detector params, default config). Assets are served same-origin from GitHub Pages and kept out of git.
 - Models: HuggingFace URLs pinned to a commit revision.
-- CC-CEDICT: a snapshot mirrored as a GitHub Release asset of this repo, converted by `scripts/build-dict.js` into a compact format: simplified headword → [tone-marked pinyin, first 3 glosses].
+- CC-CEDICT: a snapshot vendored in `data/cedict/` (revised in Plan 3: 4MB gzipped in git is simpler than a Release asset). `scripts/fetch-assets.js` compacts it into `public/ocr/cedict.tsv`, one line per reading: simplified headword, tone-marked pinyin, the first 3 glosses ("variant of" and "see" references dropped). It is listed in the manifest as `dict` and loaded after the engine is ready, so it never delays the first scan.
 
 **Startup sequence:**
 1. Feature check: WASM SIMD (validate a tiny SIMD module) and module workers. If either fails, show the "unsupported browser" screen.
@@ -246,18 +249,16 @@ Also compared:
 - `viewer.js` exposes pure functions for the transform, its inverse and clamping, all unit-tested.
 
 ### 7.4 Tap for meaning
-- Hit-test: inverse-transform the tap point to snapshot space and find the character quad containing it. The word is found by segmenting that character's CJK run with CC-CEDICT forward maximum matching and taking the segment that contains the character.
-- Worker lookup:
-  1. The whole word in CC-CEDICT.
-  2. Otherwise, a greedy longest-match split of the word, each part with its entries (e.g. 可口面 → 可口 *tasty* + 面 *noodles*).
-  3. Characters with several readings list every entry, with the reading that matches pinyin-pro's choice first.
-- A bottom card shows the characters (large), pinyin, and up to 3 glosses per entry. It's dismissed by tapping outside it or swiping down.
-- If CC-CEDICT hasn't loaded yet, the card says "Dictionary loading…" and fills in when it's ready.
-- An About sheet carries the CC-CEDICT (CC-BY-SA 4.0) attribution.
+- Hit-test: the character quad containing the tap point (in screen space), or else the nearest character centre within one character size (at least 22px, so small text is still tappable).
+- Lookup: the character's CJK run is segmented with CC-CEDICT forward maximum matching (words up to 8 characters; an unknown character is a word of its own), and the segment containing the character is the word: 阿公可口面 → 阿公 · 可口 · 面. Every entry for the word is listed, the ones whose reading matches pinyin-pro's first.
+- A bottom card, above the shutter, shows the word (large), its pinyin, and up to 3 glosses per entry; an entry's pinyin is shown only when it differs from the word's. The word is outlined on the overlay. The card closes on a tap away from the text, its close button, or a swipe down on its head.
+- If CC-CEDICT hasn't loaded yet, the card shows the tapped character and "Dictionary loading…", then fills in. If the dictionary can't be loaded, the card says "Dictionary unavailable (…)" and the next tap tries again. A word it doesn't have: "Not in the dictionary."
+- An About sheet carries the CC-CEDICT (CC BY-SA 4.0) attribution.
 
 ### 7.5 Controls
 - **Shutter** (bottom centre, outside all transforms): progress ring (loading) → pause icon (live) → spinner (scanning) → play icon (frozen).
-- **Show/hide toggle** (bottom right, frozen only): an eye icon that hides pinyin and highlights.
+- **Show/hide toggle** (bottom right, frozen only): an eye icon that hides pinyin and highlights. The choice is kept across scans.
+- **About** (top right, an "i"): what the app does, credits and licences, and a "Show debug info" button.
 - "No Chinese text found, try moving closer" toast if a scan returns no lines. The view stays frozen.
 - All controls respect `env(safe-area-inset-*)`. Buttons have `aria-label`s, and the card is real DOM.
 
@@ -285,9 +286,9 @@ Every state has an exit. No error ever requires the user to clear site data manu
 - One snapshot canvas is reused.
 - Peak worker memory is measured on device and shown in the debug panel.
 
-**Debug panel** (`?debug`, or long-press About): backend, last scan's per-stage timings, per-asset cache status, app and model versions, last error. This is how on-device problems get reported back.
+**Debug panel** (`?debug`, or About › Show debug info; revised in Plan 3, a button being easier to find than a long press): backend, last scan's per-stage timings, per-asset cache status, app and model versions, last error. This is how on-device problems get reported back.
 
-**Not yet built (after Plan 2, 2026-10-04):** while a download retries, the shutter's progress ring simply waits (no "Download interrupted, retrying" text); after the retries the error card appears as specified. The debug panel shows versions, models, engine start time, last-scan timings and the last error, but not yet the backend, per-asset cache status or peak memory, and it opens with `?debug` only (long-press About comes with Plan 3's About sheet).
+**Not yet built (after Plan 2, 2026-10-04):** while a download retries, the shutter's progress ring simply waits (no "Download interrupted, retrying" text); after the retries the error card appears as specified. The debug panel shows versions, models, engine start time, last-scan timings and the last error, but not yet the backend, per-asset cache status or peak memory,.
 
 ## 9. Testing
 
@@ -325,6 +326,8 @@ src/
     state.js         # state machine (pure reducer)
     assets.js        # manifest, Cache API, SHA-256, progress, retry
     engine.js        # OCR worker client: one request at a time, watchdog, respawn
+    dictionary.js    # dictionary worker client: load once, concurrent lookups, retry after failure
+    hittest.js       # tap point → character (pure)
     camera.js        # stream lifecycle, region capture
     view.js          # zoom/pan math (pure)
     gestures.js      # pointer pinch/drag, wheel zoom
@@ -332,14 +335,15 @@ src/
     params.js        # ?img / ?det / ?rec / ?debug
     ui.js            # render state into the DOM, debug panel
     style.css
-  worker/            # core.js (message protocol, Node-testable), ocr.worker.js (entry)
+  worker/            # core.js + ocr.worker.js (OCR), dict-core.js + dict.worker.js (dictionary), replies.js
   ocr/               # image.js, detect.js, geometry.js, recognize.js, pipeline.js
-  text/              # annotate.js (dict.js arrives with Plan 3)
+  text/              # annotate.js, dict.js (segmentation + lookup)
+data/cedict/         # vendored CC-CEDICT snapshot + README (licence, date, hash)
 scripts/
   models.config.js   # candidate models: pinned URLs, sha256, official params
   fetch-models.js    # download + verify models, extract character lists
-  fetch-assets.js    # build-time: shipped models + ORT wasm → public/ocr/ + manifest.json
-  build-dict.js      # CC-CEDICT → compact format
+  fetch-assets.js    # build-time: shipped models + ORT wasm + compacted CC-CEDICT → public/ocr/ + manifest.json
+  lib/cedict.js      # CC-CEDICT → compact format
   bench.js
 test/
   unit/  golden/  e2e/

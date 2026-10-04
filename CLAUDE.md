@@ -12,6 +12,8 @@ Implementation plans: `docs/superpowers/plans/`.
 - `src/ocr/` and `src/text/` stay DOM-free and Node-free (they run in a Worker and in Node tests).
   Node-only helpers live in `scripts/lib/`.
 - Detector thresholds come only from `scripts/models.config.js` (each model's official config).
+- `data/cedict/` is a vendored CC-CEDICT snapshot (CC BY-SA 4.0). Replacing it means updating its README and the
+  About sheet's attribution in `index.html`.
 - ONNX Runtime is imported from `onnxruntime-web/wasm` and always given `env.wasm.wasmBinary`.
 - One service worker only (vite-plugin-pwa), no `skipWaiting`/`clientsClaim`.
 
@@ -19,7 +21,7 @@ Implementation plans: `docs/superpowers/plans/`.
 - `npm test`: unit + integration tests (integration needs `npm run fetch-models` first)
 - `npm run fetch-models`: download pinned models into `models/` (gitignored), verify SHA-256
 - `npm run dev`: dev server at http://localhost:5173/PinyinLens/ (`?img=<url>` scans a still image, `?debug` shows timings)
-- `npm run build`: publish shipped models to `public/ocr/` (gitignored) and build `dist/`
+- `npm run build`: publish shipped models and the compacted dictionary to `public/ocr/` (gitignored) and build `dist/`
 - `npm run test:e2e`: Playwright against the build (run `npm run build` first)
 - `npm run bench`: model benchmark on `test/fixtures` (labels in `test/fixtures/labels.json`)
 
