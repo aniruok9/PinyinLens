@@ -9,8 +9,9 @@ CC-CEDICT is licensed under the
 The app credits it in its About sheet (`index.html`).
 
 `npm run build` compacts it into `public/ocr/cedict.tsv` (`scripts/lib/cedict.js`): simplified headword,
-tone-marked pinyin and at most three glosses per entry, without "variant of" and "see" references. That
-derived file is shared under the same license.
+tone-marked pinyin and at most three glosses per entry, without measure words, "variant of" and "see"
+references, or entries that repeat another's glosses; references to other words read "书经 (Shū jīng)".
+That derived file is shared under the same license.
 
 To update: download https://www.mdbg.net/chinese/export/cedict/cedict_1_0_ts_utf-8_mdbg.txt.gz over this
 file, then update the date and hash above and the snapshot date in the About sheet.

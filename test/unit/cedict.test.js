@@ -46,4 +46,42 @@ describe('compactDictionary', () => {
       ['面\tmiàn\tflour/noodles/(of food) soft (not crunchy)', '行\txíng\tto walk; to go', ''].join('\n'),
     );
   });
+
+  it('writes references to other words as the simplified word and tone-marked pinyin', () => {
+    const text = [
+      '書 书 [shu1] /book/abbr. for 書經|书经[Shu1 jing1]/',
+      '魚 鱼 [yu2] /used in the names of aquatic animals (including abalone 鮑魚|鲍鱼[bao4 yu2])/',
+      '卡 卡 [ka3] /to block/also pr. [qia3]/',
+      '一模一樣 一模一样 [yi1 mu2 yi1 yang4] /exactly alike/also pr. [yi1mo2-yi1yang4]/',
+      '七夕 七夕 [Qi1 xi1] /the night when 牛郎織女|牛郎织女 meet/',
+    ].join('\n');
+    expect(compactDictionary(text).split('\n')).toEqual([
+      '书\tshū\tbook/abbr. for 书经 (Shū jīng)',
+      '鱼\tyú\tused in the names of aquatic animals (including abalone 鲍鱼 (bào yú))',
+      '卡\tkǎ\tto block/also pr. [qiǎ]',
+      '一模一样\tyī mú yī yàng\texactly alike/also pr. [yīmó-yīyàng]',
+      '七夕\tQī xī\tthe night when 牛郎织女 meet',
+      '',
+    ]);
+  });
+
+  it('leaves out measure words, whether a gloss of their own or in brackets', () => {
+    const text = ['飯 饭 [fan4] /cooked rice/CL:碗[wan3]/meal/', '魚 鱼 [yu2] /fish (CL:條|条[tiao2],尾[wei3])/'].join('\n');
+    expect(compactDictionary(text)).toBe(['饭\tfàn\tcooked rice/meal', '鱼\tyú\tfish', ''].join('\n'));
+  });
+
+  it('drops an entry whose meanings all appear in another entry for the same word and reading', () => {
+    const text = [
+      '荳 豆 [dou4] /legume; pulse; bean; pea (CL:顆|颗[ke1],粒[li4]) (variant of 豆[dou4])/',
+      '豆 豆 [dou4] /legume; pulse; bean; pea (CL:顆|颗[ke1],粒[li4])/(old) stemmed cup or bowl/',
+      '面 面 [mian4] /face/side/',
+      '麵 面 [mian4] /flour/noodles/',
+    ].join('\n');
+    expect(compactDictionary(text).split('\n')).toEqual([
+      '豆\tdòu\tlegume; pulse; bean; pea/(old) stemmed cup or bowl',
+      '面\tmiàn\tface/side',
+      '面\tmiàn\tflour/noodles',
+      '',
+    ]);
+  });
 });

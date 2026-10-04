@@ -36,7 +36,8 @@ export function markSyllable(syllable) {
   return letters.slice(0, at) + marked + letters.slice(at + 1);
 }
 
-export const markPinyin = (numbered) => numbered.split(' ').map(markSyllable).join(' ');
+// Every numbered syllable in a string, spaced or not: "ke3 kou3" → "kě kǒu", "yi1mo2-yi1yang4" → "yīmó-yīyàng".
+export const markPinyin = (numbered) => numbered.replace(/[a-zü:]+[1-5]/gi, markSyllable);
 
 const LINE = /^(\S+) (\S+) \[([^\]]*)\] \/(.*)\/\s*$/;
 // Cross-references that carry no meaning of their own.
@@ -50,16 +51,47 @@ export function parseLine(line) {
   return { traditional, simplified, pinyin: markPinyin(pinyin), glosses: glosses.split('/') };
 }
 
+// Bracketed asides that only point elsewhere: measure words and variant notes.
+const ASIDE = /\s*\((CL:|(old |archaic |Japanese |Taiwan )?variant of )[^)]*\)/g;
+// A reference to another word, "書經|书经[Shu1 jing1]" or "书经[Shu1 jing1]", and bare "[qia3]" pinyin.
+const REFERENCE = /(?:[^\s|[\]/,;()]+\|)?([^\s|[\]/,;()]+)\[([^\]]+)\]/g;
+const BARE_PINYIN = /\[([^\]]+)\]/g;
+const TRAD_SIMP = /[^\s|[\]/,;()]+\|([^\s|[\]/,;()]+)/g; // "牛郎織女|牛郎织女" with no pinyin
+
+// One gloss as a reader should see it, or '' when nothing meaningful is left.
+function cleanGloss(gloss) {
+  if (!gloss || REFERENCE_ONLY.test(gloss) || gloss.startsWith('CL:')) return '';
+  return gloss
+    .replace(ASIDE, '')
+    .replace(REFERENCE, (_, word, pinyin) => `${word} (${markPinyin(pinyin)})`)
+    .replace(BARE_PINYIN, (_, pinyin) => `[${markPinyin(pinyin)}]`)
+    .replace(TRAD_SIMP, '$1')
+    .trim();
+}
+
 // The whole CC-CEDICT text → compact TSV: "simplified\tpinyin\tgloss/gloss/gloss" per line,
-// keeping at most `maxGlosses` meaningful glosses and dropping entries that are only
-// cross-references.
+// keeping at most `maxGlosses` meaningful glosses. References to other words read "书经 (Shū jīng)";
+// measure words, variant notes, entries left with nothing, and entries whose glosses all appear in
+// another entry for the same word and reading (traditional variants of one word) are dropped.
 export function compactDictionary(text, { maxGlosses = 3 } = {}) {
-  const out = [];
+  const groups = new Map(); // "simplified\tpinyin" → [glosses, ...] in file order
   for (const line of text.split('\n')) {
     const entry = parseLine(line);
     if (!entry) continue;
-    const glosses = entry.glosses.filter((g) => g && !REFERENCE_ONLY.test(g)).slice(0, maxGlosses);
-    if (glosses.length) out.push(`${entry.simplified}\t${entry.pinyin}\t${glosses.join('/')}`);
+    const glosses = entry.glosses.map(cleanGloss).filter(Boolean);
+    if (!glosses.length) continue;
+    const key = `${entry.simplified}\t${entry.pinyin}`;
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(glosses);
+  }
+  const out = [];
+  for (const [key, entries] of groups) {
+    entries.forEach((glosses, i) => {
+      const covered = entries.some(
+        (other, j) => j !== i && glosses.every((g) => other.includes(g)) && (other.length > glosses.length || j < i),
+      );
+      if (!covered) out.push(`${key}\t${glosses.slice(0, maxGlosses).join('/')}`);
+    });
   }
   return `${out.join('\n')}\n`;
 }

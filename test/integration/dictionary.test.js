@@ -11,11 +11,12 @@ const SNAPSHOT = new URL('../../data/cedict/cedict_1_0_ts_utf-8_mdbg.txt.gz', im
 
 describe('dictionary worker core on the real CC-CEDICT', () => {
   const handle = createDictCore({ createDictionary });
+  let tsv;
   const lookup = async (run, index, readings) =>
     (await handle({ type: 'lookup', id: 2, run, index, readings })).result;
 
   beforeAll(async () => {
-    const tsv = compactDictionary(gunzipSync(readFileSync(SNAPSHOT)).toString('utf8'));
+    tsv = compactDictionary(gunzipSync(readFileSync(SNAPSHOT)).toString('utf8'));
     const ready = await handle({ type: 'load', id: 1, bytes: new TextEncoder().encode(tsv).buffer });
     expect(ready).toMatchObject({ type: 'ready', id: 1 });
     expect(ready.words).toBeGreaterThan(100_000);
@@ -34,8 +35,15 @@ describe('dictionary worker core on the real CC-CEDICT', () => {
   });
 
   it('puts the everyday meaning of a common menu character before its surname sense', async () => {
-    expect((await lookup('鱼', 0, ['yú'])).entries[0].glosses[0]).toMatch(/^fish\b/);
+    expect((await lookup('鱼', 0, ['yú'])).entries[0].glosses[0]).toBe('fish');
     expect((await lookup('黄', 0, ['huáng'])).entries[0].glosses[0]).toBe('yellow');
+  });
+
+  it('shows no raw dictionary markup: references, measure words, near-duplicate entries', async () => {
+    const raw = tsv.split('\n').filter((line) => /\||CL:|\[[A-Za-z:]+[1-5]/.test(line));
+    expect(raw.slice(0, 5)).toEqual([]);
+    expect((await lookup('饭', 0, ['fàn'])).entries[0].glosses.slice(0, 2)).toEqual(['cooked rice', 'meal']); // CL:碗 gone
+    expect((await lookup('豆', 0, ['dòu'])).entries.filter((e) => e.pinyin === 'dòu')).toHaveLength(1);
   });
 
   it('includes the noodles sense of 面', async () => {
