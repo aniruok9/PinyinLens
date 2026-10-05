@@ -1,14 +1,25 @@
 // Rear camera stream and frame capture (spec §4, §8).
 
-export async function openCamera(video) {
-  const stream = await navigator.mediaDevices.getUserMedia({
+// Turns the rear camera on: a MediaStream not yet shown anywhere.
+export const acquireCamera = () =>
+  navigator.mediaDevices.getUserMedia({
     audio: false,
     video: { facingMode: 'environment', width: { ideal: 1920 }, height: { ideal: 1080 } },
   });
+
+// Shows `stream` in `video`. If it won't play, the camera is turned off again and the error rethrown.
+export async function showCamera(video, stream) {
   video.srcObject = stream;
-  await video.play();
+  try {
+    await video.play();
+  } catch (err) {
+    closeCamera(video, stream);
+    throw err;
+  }
   return stream;
 }
+
+export const openCamera = async (video) => showCamera(video, await acquireCamera());
 
 // Turns the camera off: stops the stream's tracks (the browser's camera indicator goes out) and
 // detaches it from the video if it is still the one showing.

@@ -1,5 +1,5 @@
 import { createAssetLoader } from './assets.js';
-import { captureRegion, closeCamera, openCamera, sourceSize, trackEnded } from './camera.js';
+import { acquireCamera, captureRegion, closeCamera, openCamera, showCamera, sourceSize, trackEnded } from './camera.js';
 import { createDictionaryClient } from './dictionary.js';
 import { createEngine } from './engine.js';
 import { bindGestures } from './gestures.js';
@@ -80,6 +80,7 @@ let engine = null;
 let dictionary = null;
 let source = null; // the live <video>, or the <img> under ?img=
 let stream = null;
+let starting = null; // the first camera open in flight, so a second tap on Start doesn't open another
 let restarting = null; // the camera re-open in flight, so overlapping triggers open it once
 let cameraSession = 0; // bumped by Back to start, so a re-open that lands afterwards is closed
 let viewport = { width: innerWidth, height: innerHeight };
@@ -171,9 +172,18 @@ function afterFirstLoad() {
 
 // ── Camera and live view ────────────────────────────────────────────────────────────────────
 
-async function startCamera() {
+// Start camera (or auto-start on a repeat visit): one at a time, with the button disabled meanwhile.
+function startCamera() {
+  starting ??= openSource().finally(() => {
+    starting = null;
+    els.start.disabled = false;
+  });
+  els.start.disabled = true;
+  return starting;
+}
+
+async function openSource() {
   try {
-    await restarting; // a re-open still in flight after Back to start closes itself first (never rejects)
     if (params.img) {
       els.still.src = params.img;
       await els.still.decode();
@@ -195,13 +205,17 @@ async function startCamera() {
 
 function restartCamera() {
   const session = cameraSession;
-  restarting ??= openCamera(els.live)
-    .then((opened) => {
-      if (session !== cameraSession) return closeCamera(els.live, opened); // Back to start meanwhile
-      stream = opened;
-      watchTrack(opened);
-      layoutLive();
-    })
+  restarting ??= (async () => {
+    const opened = await acquireCamera();
+    // Back to start while the camera was opening: turn it off before it is shown (iOS would never
+    // play it in the hidden video, leaving it on).
+    if (session !== cameraSession) return closeCamera(els.live, opened);
+    await showCamera(els.live, opened);
+    if (session !== cameraSession) return closeCamera(els.live, opened);
+    stream = opened;
+    watchTrack(opened);
+    layoutLive();
+  })()
     .catch((err) => {
       if (session === cameraSession) dispatch({ type: 'fatal', kind: 'camera', message: err.message });
     })
@@ -312,7 +326,9 @@ function backToStart() {
   cameraSession++;
   dropScan();
   if (source === els.live) {
-    closeCamera(els.live, stream);
+    // A re-open may be showing a newer stream than `stream`; clearing srcObject also aborts its play().
+    for (const shown of new Set([stream, els.live.srcObject])) closeCamera(els.live, shown);
+    els.live.srcObject = null;
     stream = null;
   }
   source.hidden = true;

@@ -72,3 +72,53 @@ test('a camera reopen still under way when Back is pressed is closed when it lan
   await expect(body(page)).toHaveAttribute('data-state', 'live');
   expect(await allTracks(page)).toEqual(['ended', 'ended', 'live']);
 });
+
+// Like iOS Safari, never start playing a hidden <video> (the promise stays pending).
+const noHiddenPlay = (page) =>
+  page.addInitScript(() => {
+    const play = HTMLMediaElement.prototype.play;
+    HTMLMediaElement.prototype.play = function playIfVisible() {
+      return this.hidden ? new Promise(() => {}) : play.call(this);
+    };
+  });
+
+test('on a browser that will not play hidden video, Back during a camera reopen still turns it off', async ({ page }) => {
+  await recordStreams(page, { slowReopen: true });
+  await noHiddenPlay(page);
+  await startWhenReady(page, './');
+  await page.evaluate(() => {
+    const [track] = document.getElementById('live').srcObject.getVideoTracks();
+    track.stop();
+    track.dispatchEvent(new Event('ended'));
+  });
+  await back(page).click();
+  await expect.poll(() => allTracks(page)).toEqual(['ended', 'ended']);
+  await start(page).click();
+  await expect(body(page)).toHaveAttribute('data-state', 'live');
+});
+
+test('a camera that will not play is turned off behind the error card', async ({ page }) => {
+  await recordStreams(page);
+  await page.addInitScript(() => {
+    HTMLMediaElement.prototype.play = () => Promise.reject(new DOMException('Playback refused', 'NotAllowedError'));
+  });
+  await page.goto('./');
+  await start(page).click();
+  await expect(page.getByRole('heading', { name: 'Camera unavailable' })).toBeVisible();
+  expect(await allTracks(page)).toEqual(['ended']);
+});
+
+test('tapping Start twice opens the camera once, so Back turns it off', async ({ page }) => {
+  await recordStreams(page);
+  await page.goto('./');
+  await page.evaluate(() => {
+    const button = document.getElementById('start');
+    button.click();
+    button.click();
+  });
+  await expect(body(page)).toHaveAttribute('data-state', 'live');
+  expect(await allTracks(page)).toEqual(['live']);
+  await expect(body(page)).toHaveAttribute('data-engine', 'ready', { timeout: 60_000 });
+  await back(page).click();
+  expect(await allTracks(page)).toEqual(['ended']);
+});
