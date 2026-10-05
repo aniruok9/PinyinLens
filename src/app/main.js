@@ -1,5 +1,5 @@
 import { createAssetLoader } from './assets.js';
-import { captureRegion, openCamera, sourceSize, trackEnded } from './camera.js';
+import { captureRegion, closeCamera, openCamera, sourceSize, trackEnded } from './camera.js';
 import { createDictionaryClient } from './dictionary.js';
 import { createEngine } from './engine.js';
 import { bindGestures } from './gestures.js';
@@ -40,6 +40,7 @@ const els = {
   notice: byId('notice'),
   debug: byId('debug'),
   toggle: byId('toggle'),
+  back: byId('back'),
   aboutButton: byId('about-button'),
   about: byId('about'),
   aboutClose: byId('about-close'),
@@ -80,6 +81,7 @@ let dictionary = null;
 let source = null; // the live <video>, or the <img> under ?img=
 let stream = null;
 let restarting = null; // the camera re-open in flight, so overlapping triggers open it once
+let cameraSession = 0; // bumped by Back to start, so a re-open that lands afterwards is closed
 let viewport = { width: innerWidth, height: innerHeight };
 let liveZoom = 1;
 let frozen = null; // { region, view, lines, placements } while scanning or frozen
@@ -171,6 +173,7 @@ function afterFirstLoad() {
 
 async function startCamera() {
   try {
+    await restarting; // a re-open still in flight after Back to start closes itself first (never rejects)
     if (params.img) {
       els.still.src = params.img;
       await els.still.decode();
@@ -191,13 +194,17 @@ async function startCamera() {
 }
 
 function restartCamera() {
+  const session = cameraSession;
   restarting ??= openCamera(els.live)
     .then((opened) => {
+      if (session !== cameraSession) return closeCamera(els.live, opened); // Back to start meanwhile
       stream = opened;
       watchTrack(opened);
       layoutLive();
     })
-    .catch((err) => dispatch({ type: 'fatal', kind: 'camera', message: err.message }))
+    .catch((err) => {
+      if (session === cameraSession) dispatch({ type: 'fatal', kind: 'camera', message: err.message });
+    })
     .finally(() => {
       restarting = null;
     });
@@ -277,7 +284,8 @@ async function freeze() {
   }
 }
 
-function resume() {
+// Drops the frozen scan: snapshot, pinyin and the word on the card.
+function dropScan() {
   frozen = null;
   selection = null;
   lookupSeq++;
@@ -285,12 +293,31 @@ function resume() {
   els.snapshot.width = 0; // releases the snapshot's memory (iOS caps total canvas memory)
   els.snapshot.height = 0;
   queueOverlay();
+}
+
+function resume() {
+  dropScan();
   liveZoom = 1;
   source.hidden = false;
   layoutLive();
   if (source !== els.live) return;
   if (trackEnded(stream)) restartCamera();
   else els.live.play().catch(() => {});
+}
+
+// Back to the title screen: the only time the app turns the camera off. Start opens it again; the
+// engine stays loaded.
+function backToStart() {
+  if (state.screen !== 'live' && state.screen !== 'frozen') return;
+  cameraSession++;
+  dropScan();
+  if (source === els.live) {
+    closeCamera(els.live, stream);
+    stream = null;
+  }
+  source.hidden = true;
+  liveZoom = 1;
+  dispatch({ type: 'back' });
 }
 
 // ── Overlay ─────────────────────────────────────────────────────────────────────────────────
@@ -375,6 +402,7 @@ els.shutter.addEventListener('click', () => {
     resume();
   }
 });
+els.back.addEventListener('click', backToStart);
 els.toggle.addEventListener('click', () => {
   dispatch({ type: 'toggle-pinyin' });
   queueOverlay();

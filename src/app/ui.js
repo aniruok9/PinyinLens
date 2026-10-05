@@ -41,6 +41,7 @@ export function render(els, state) {
   els.notice.hidden = !state.notice;
   els.notice.textContent = state.notice ?? '';
   els.toggle.hidden = state.screen !== 'frozen';
+  els.back.hidden = state.screen !== 'live' && state.screen !== 'frozen';
   els.toggle.setAttribute('aria-label', state.pinyinVisible ? 'Hide pinyin' : 'Show pinyin');
   els.toggle.toggleAttribute('data-off', !state.pinyinVisible);
   renderCard(els, state.card, state.dict);

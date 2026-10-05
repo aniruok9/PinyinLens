@@ -92,3 +92,22 @@ describe('reduce: meaning card, pinyin toggle, About, dictionary', () => {
     expect(reduce(live, { type: 'dict-failed' }).dict).toBe('failed');
   });
 });
+
+describe('reduce: back to start', () => {
+  const frozen = run([{ type: 'freeze' }, { type: 'scan-done', lineCount: 1 }], live);
+
+  it('returns from the live camera or a frozen scan to the title, dropping the card and notice', () => {
+    expect(reduce(live, { type: 'back' })).toMatchObject({ screen: 'intro', engine: 'ready' });
+    const withCard = run([{ type: 'show-card', card: { word: '面' } }, { type: 'notice', message: 'hi' }], frozen);
+    expect(reduce(withCard, { type: 'back' })).toMatchObject({ screen: 'intro', card: null, notice: null });
+    expect(reduce(reduce(withCard, { type: 'back' }), { type: 'start' }).screen).toBe('live');
+  });
+
+  it('is ignored while a scan runs, and on the title or error screens', () => {
+    const scanning = reduce(live, { type: 'freeze' });
+    expect(reduce(scanning, { type: 'back' })).toBe(scanning);
+    expect(reduce(initialState, { type: 'back' })).toBe(initialState);
+    const failed = reduce(live, { type: 'fatal', kind: 'camera', message: 'x' });
+    expect(reduce(failed, { type: 'back' })).toBe(failed);
+  });
+});

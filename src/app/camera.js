@@ -10,6 +10,13 @@ export async function openCamera(video) {
   return stream;
 }
 
+// Turns the camera off: stops the stream's tracks (the browser's camera indicator goes out) and
+// detaches it from the video if it is still the one showing.
+export function closeCamera(video, stream) {
+  for (const track of stream?.getTracks() ?? []) track.stop();
+  if (video.srcObject === stream) video.srcObject = null;
+}
+
 // iOS ends camera tracks while the app is in the background; only then do we re-acquire.
 export const trackEnded = (stream) => !stream || stream.getVideoTracks().every((track) => track.readyState === 'ended');
 

@@ -259,6 +259,7 @@ Also compared:
 - **Shutter** (bottom centre, outside all transforms): progress ring (loading) → pause icon (live) → spinner (scanning) → play icon (frozen).
 - **Show/hide toggle** (bottom right, frozen only): an eye icon that hides pinyin and highlights. The choice is kept across scans.
 - **About** (top right, an "i"): what the app does, credits and licences, and a "Show debug info" button.
+- **Back to start** (top left, a "‹"; live and frozen only, hidden while a scan runs): turns the camera off, drops the frozen scan and the word card, and shows the title screen, whose Start button opens the camera again. The engine stays loaded. *(Added 2026-10-05: the browser's camera indicator stayed on until the tab was closed.)*
 - "No Chinese text found, try moving closer" toast if a scan returns no lines. The view stays frozen.
 - All controls respect `env(safe-area-inset-*)`. Buttons have `aria-label`s, and the card is real DOM.
 
@@ -280,6 +281,7 @@ Every state has an exit. No error ever requires the user to clear site data manu
 - One MediaStream.
 - On `visibilitychange → visible`, and on the track's `ended` event: if the track's `readyState === 'ended'`, re-acquire. Otherwise leave it alone.
 - The frozen state survives backgrounding (the snapshot doesn't depend on the stream). The camera is re-acquired, if needed, when the user taps play.
+- The app turns the camera off only on Back to start (all tracks stopped). The camera stays on while frozen, so play resumes instantly (user decision, 2026-10-05). A re-acquire still in flight when Back is pressed closes its stream when it lands, and Start waits for it.
 
 **Memory:**
 - ORT sessions are created once.

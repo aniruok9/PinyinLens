@@ -44,6 +44,9 @@ export function reduce(state, event) {
       return state.screen === 'scanning' ? { ...state, screen: 'live', notice: 'Scan failed. Try again.' } : state;
     case 'resume':
       return state.screen === 'frozen' ? { ...state, screen: 'live', notice: null, card: null } : state;
+    case 'back':
+      // Back to the title: the camera is turned off (main.js); the engine stays loaded.
+      return state.screen === 'live' || state.screen === 'frozen' ? { ...state, screen: 'intro', card: null, notice: null } : state;
     case 'show-card':
       return state.screen === 'frozen' ? { ...state, card: event.card } : state;
     case 'close-card':

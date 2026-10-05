@@ -11,6 +11,7 @@ Everything runs on the phone: no server, no account, and it works offline after 
 2. Aim at a menu or sign. Pinch to zoom in on small text: the scan uses only what's on screen, so zooming in helps.
 3. Tap the shutter to freeze and scan. Pinch and drag to look around; tap again to go back to the camera.
 4. Tap a character for its word's meaning. The eye button hides the pinyin; the **i** button shows credits.
+5. The **‹** button goes back to the start screen and turns the camera off.
 
 On iPhone, Share › Add to Home Screen keeps the app and its engine available offline.
 
